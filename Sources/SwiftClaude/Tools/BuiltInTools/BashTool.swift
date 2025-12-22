@@ -95,8 +95,8 @@ public struct BashTool: Tool {
                     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
 
-                    let stdout = String(data: outputData, encoding: .utf8) ?? ""
-                    let stderr = String(data: errorData, encoding: .utf8) ?? ""
+                    let stdout = String(decoding: outputData, as: UTF8.self)
+                    let stderr = String(decoding: errorData, as: UTF8.self)
 
                     // Combine stdout and stderr
                     var output = stdout

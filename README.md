@@ -8,6 +8,7 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Streaming Support** - Real-time token streaming via AsyncStream
 - ✅ **Type-Safe** - Compile-time guarantees with proper Sendable conformance
 - ✅ **Conversation Management** - Maintain context across multiple turns
+- ✅ **Session Serialization** - Save and restore conversations as JSON
 - ✅ **Actor Isolation** - Thread-safe by design
 - ✅ **Proper Cancellation** - Full support for Task cancellation
 - ✅ **Direct API Integration** - Communicates directly with Anthropic API
@@ -191,6 +192,33 @@ let task = Task {
 // Cancel after timeout
 try await Task.sleep(for: .seconds(5))
 await client.cancel()
+```
+
+### Session Serialization
+
+Save and restore conversation history:
+
+```swift
+let apiKey = "your-api-key-here"
+let client = ClaudeClient(options: .init(apiKey: apiKey))
+
+// Have a conversation
+for await _ in client.query("Hello!") {}
+for await _ in client.query("What is 2 + 2?") {}
+
+// Export session to JSON
+let sessionJSON = try await client.exportSessionString()
+try sessionJSON.write(to: URL(fileURLWithPath: "session.json"), atomically: true, encoding: .utf8)
+
+// Later, restore the session
+let savedJSON = try String(contentsOf: URL(fileURLWithPath: "session.json"))
+let restoredClient = ClaudeClient(options: .init(apiKey: apiKey))
+try await restoredClient.importSession(from: savedJSON)
+
+// Continue the conversation where you left off
+for await message in restoredClient.query("What was my previous question?") {
+    // Will remember asking about 2 + 2
+}
 ```
 
 ## Running the CLI

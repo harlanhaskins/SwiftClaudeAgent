@@ -10,9 +10,7 @@ actor SSEParser {
         eventType: T.Type
     ) throws -> [T] {
         var events: [T] = []
-        guard let content = String(data: data, encoding: .utf8) else {
-            throw SSEError.invalidEncoding
-        }
+        let content = String(decoding: data, as: UTF8.self)
 
         var currentEventData = ""
 
@@ -23,9 +21,7 @@ actor SSEParser {
             if trimmed.isEmpty {
                 if !currentEventData.isEmpty {
                     // Parse the accumulated data
-                    guard let jsonData = currentEventData.data(using: .utf8) else {
-                        throw SSEError.invalidEncoding
-                    }
+                    let jsonData = Data(currentEventData.utf8)
 
                     let decoder = JSONDecoder()
                     let event = try decoder.decode(T.self, from: jsonData)
@@ -49,9 +45,7 @@ actor SSEParser {
 
         // Handle last event if no trailing newline
         if !currentEventData.isEmpty {
-            guard let jsonData = currentEventData.data(using: .utf8) else {
-                throw SSEError.invalidEncoding
-            }
+            let jsonData = Data(currentEventData.utf8)
             let decoder = JSONDecoder()
             let event = try decoder.decode(T.self, from: jsonData)
             events.append(event)
@@ -64,7 +58,6 @@ actor SSEParser {
 // MARK: - SSE Errors
 
 enum SSEError: Error {
-    case invalidEncoding
     case parsingError(String)
     case streamClosed
 }

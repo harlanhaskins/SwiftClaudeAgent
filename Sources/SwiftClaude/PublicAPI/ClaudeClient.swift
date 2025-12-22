@@ -126,6 +126,50 @@ public actor ClaudeClient {
         conversationHistory
     }
 
+    // MARK: - Session Serialization
+
+    /// Export the current session (conversation history) as JSON data.
+    /// - Returns: JSON-encoded session data
+    /// - Throws: EncodingError if serialization fails
+    public func exportSession() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(conversationHistory)
+    }
+
+    /// Export the current session (conversation history) as a JSON string.
+    /// - Returns: JSON-encoded session string
+    /// - Throws: EncodingError if serialization fails
+    public func exportSessionString() throws -> String {
+        let data = try exportSession()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Import a session (conversation history) from JSON data.
+    /// This replaces the current conversation history.
+    /// - Parameter data: JSON-encoded session data
+    /// - Throws: DecodingError if deserialization fails
+    public func importSession(from data: Data) throws {
+        let decoder = JSONDecoder()
+        let messages = try decoder.decode([Message].self, from: data)
+        conversationHistory = messages
+        turnCount = messages.filter { message in
+            if case .user = message {
+                return true
+            }
+            return false
+        }.count
+    }
+
+    /// Import a session (conversation history) from a JSON string.
+    /// This replaces the current conversation history.
+    /// - Parameter string: JSON-encoded session string
+    /// - Throws: DecodingError if deserialization fails
+    public func importSession(from string: String) throws {
+        let data = Data(string.utf8)
+        try importSession(from: data)
+    }
+
     // MARK: - Private Implementation
 
     private func executeQuery(

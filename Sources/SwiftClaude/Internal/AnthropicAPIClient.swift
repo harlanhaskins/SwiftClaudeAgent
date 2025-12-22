@@ -153,8 +153,8 @@ actor AnthropicAPIClient {
             var errorMessage = "HTTP \(httpResponse.statusCode)"
 
             // Try to extract error details from response body
-            if let data = data,
-               let responseBody = String(data: data, encoding: .utf8) {
+            if let data = data {
+                let responseBody = String(decoding: data, as: UTF8.self)
                 errorMessage += ": \(responseBody)"
             }
 
