@@ -14,9 +14,10 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Direct API Integration** - Communicates directly with Anthropic API
 - ✅ **Environment Config** - Load API keys from .env files
 - ✅ **Tools Support** - Built-in Read, Write, and Bash tools with typed inputs
+- ✅ **Web Tools** - Built-in web search and fetch via Claude API
+- ✅ **Hooks System** - Lifecycle hooks for logging, permissions, and observability
 - ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
 - 🚧 **MCP Integration** - Coming soon (custom tool servers)
-- 🚧 **Hooks System** - Coming soon (lifecycle callbacks)
 
 ## Installation
 
@@ -220,6 +221,75 @@ for await message in restoredClient.query("What was my previous question?") {
     // Will remember asking about 2 + 2
 }
 ```
+
+### Hooks
+
+Register lifecycle hooks for logging, permissions, and observability:
+
+```swift
+let client = ClaudeClient(options: .init(apiKey: apiKey))
+
+// Log all tool executions
+await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+    print("🔧 Executing tool: \(context.toolName)")
+}
+
+// Request permission before sensitive tools
+await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+    if context.toolName == "Location" {
+        // Show permission dialog to user
+        let allowed = await requestLocationPermission()
+        if !allowed {
+            throw PermissionDeniedError()
+        }
+    }
+}
+
+// Track API usage
+await client.addHook(.afterResponse) { (context: AfterResponseContext) in
+    print("Response completed. Success: \(context.success)")
+    // Log metrics, update UI, etc.
+}
+
+// Error monitoring
+await client.addHook(.onError) { (context: ErrorContext) in
+    print("Error in \(context.phase): \(context.error)")
+    // Send to error tracking service
+}
+```
+
+**Available Hooks:**
+- `beforeRequest` - Before API request is sent
+- `afterResponse` - After response completes (success or error)
+- `onError` - When an error occurs
+- `beforeToolExecution` - Before a tool runs (great for permissions!)
+- `afterToolExecution` - After a tool completes
+- `onMessage` - When each message is received during streaming
+
+### Web Search and Fetch
+
+Enable Claude's built-in web search and fetch capabilities:
+
+```swift
+let options = ClaudeAgentOptions(
+    apiKey: apiKey,
+    enableWebSearch: true,  // Enable web search
+    enableWebFetch: true    // Enable web fetch
+)
+
+let client = ClaudeClient(options: options)
+
+// Claude can now search the web and fetch URLs
+for await message in client.query("What's the latest news about Swift 6?") {
+    // Claude will use web_search to find current information
+}
+
+for await message in client.query("Summarize the content at https://swift.org") {
+    // Claude will use web_fetch to read the page
+}
+```
+
+**Note:** Web tools are powered by Anthropic and don't require custom implementation. Just enable them in options!
 
 ## Running the CLI
 

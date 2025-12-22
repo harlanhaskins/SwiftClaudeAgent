@@ -31,6 +31,7 @@ public actor ClaudeClient {
     private var turnCount: Int = 0
     private let apiClient: any APIClient
     private let toolExecutor: ToolExecutor
+    private var hooks: [HookType: [HookHandler]] = [:]
 
     // MARK: - State
 
@@ -170,7 +171,45 @@ public actor ClaudeClient {
         try importSession(from: data)
     }
 
+    // MARK: - Hooks
+
+    /// Register a hook handler for a specific lifecycle event.
+    /// - Parameters:
+    ///   - type: The hook type to register for
+    ///   - handler: The handler to call when the hook fires
+    public func addHook<T: Sendable>(_ type: HookType, handler: @escaping @Sendable (T) async throws -> Void) {
+        let hookHandler = HookHandler(handler)
+        if hooks[type] == nil {
+            hooks[type] = []
+        }
+        hooks[type]?.append(hookHandler)
+    }
+
+    /// Remove all hooks for a specific type.
+    /// - Parameter type: The hook type to clear
+    public func clearHooks(for type: HookType) {
+        hooks[type] = nil
+    }
+
+    /// Remove all registered hooks.
+    public func clearAllHooks() {
+        hooks.removeAll()
+    }
+
     // MARK: - Private Implementation
+
+    /// Fire hooks for a specific type with the given context
+    private func fireHooks<T: Sendable>(_ type: HookType, context: T) async {
+        guard let handlers = hooks[type] else { return }
+        for handler in handlers {
+            do {
+                try await handler.handle(context)
+            } catch {
+                // Hooks shouldn't prevent execution, just log errors
+                print("Hook error (\(type)): \(error)")
+            }
+        }
+    }
 
     private func executeQuery(
         _ prompt: String,
@@ -189,7 +228,24 @@ public actor ClaudeClient {
             conversationHistory.append(userMessage)
 
             // Get tool definitions if tools are enabled
-            let tools: [AnthropicTool]? = options.allowedTools.isEmpty ? nil : await toolExecutor.getAnthropicTools()
+            var tools: [AnthropicTool]? = options.allowedTools.isEmpty ? nil : await toolExecutor.getAnthropicTools()
+
+            // Add built-in tools if enabled
+            if options.enableWebSearch || options.enableWebFetch {
+                var builtInTools: [AnthropicTool] = []
+                if options.enableWebSearch {
+                    builtInTools.append(.webSearch)
+                }
+                if options.enableWebFetch {
+                    builtInTools.append(.webFetch)
+                }
+
+                if tools != nil {
+                    tools?.append(contentsOf: builtInTools)
+                } else {
+                    tools = builtInTools
+                }
+            }
 
             // Execute conversation loop until no more tool uses
             var continueLoop = true
@@ -212,6 +268,14 @@ public actor ClaudeClient {
                     }
                 }
 
+                // Fire beforeRequest hook
+                await fireHooks(.beforeRequest, context: BeforeRequestContext(
+                    messages: messagesToSend,
+                    model: options.model,
+                    systemPrompt: options.systemPrompt,
+                    tools: tools
+                ))
+
                 // Stream response from API
                 var toolUses: [ToolUseBlock] = []
 
@@ -227,6 +291,9 @@ public actor ClaudeClient {
 
                     // Add to history
                     conversationHistory.append(message)
+
+                    // Fire onMessage hook
+                    await fireHooks(.onMessage, context: MessageContext(message: message))
 
                     // Yield to caller
                     continuation.yield(message)
@@ -272,11 +339,31 @@ public actor ClaudeClient {
                 }
             }
 
+            // Fire afterResponse hook (success)
+            await fireHooks(.afterResponse, context: AfterResponseContext(
+                messages: conversationHistory,
+                success: true,
+                error: nil
+            ))
+
             continuation.finish()
 
         } catch is CancellationError {
             continuation.finish()
         } catch {
+            // Fire onError hook
+            await fireHooks(.onError, context: ErrorContext(
+                error: error,
+                phase: "query_execution"
+            ))
+
+            // Fire afterResponse hook (error)
+            await fireHooks(.afterResponse, context: AfterResponseContext(
+                messages: conversationHistory,
+                success: false,
+                error: error
+            ))
+
             print("Query execution error: \(error)")
             continuation.finish()
         }
@@ -284,15 +371,45 @@ public actor ClaudeClient {
 
     /// Execute a tool use and return the result
     private func executeToolUse(_ toolUse: ToolUseBlock) async -> ToolResult {
+        // Fire beforeToolExecution hook
+        await fireHooks(.beforeToolExecution, context: BeforeToolExecutionContext(
+            toolName: toolUse.name,
+            toolUseId: toolUse.id,
+            input: toolUse.input.toData()
+        ))
+
         do {
             let result = try await toolExecutor.execute(
                 toolName: toolUse.name,
                 toolUseId: toolUse.id,
                 inputData: toolUse.input.toData()
             )
+
+            // Fire afterToolExecution hook
+            await fireHooks(.afterToolExecution, context: AfterToolExecutionContext(
+                toolName: toolUse.name,
+                toolUseId: toolUse.id,
+                result: result
+            ))
+
             return result
         } catch {
-            return ToolResult.error("Tool execution failed: \(error.localizedDescription)")
+            // Fire onError hook
+            await fireHooks(.onError, context: ErrorContext(
+                error: error,
+                phase: "tool_execution"
+            ))
+
+            let errorResult = ToolResult.error("Tool execution failed: \(error.localizedDescription)")
+
+            // Fire afterToolExecution hook with error result
+            await fireHooks(.afterToolExecution, context: AfterToolExecutionContext(
+                toolName: toolUse.name,
+                toolUseId: toolUse.id,
+                result: errorResult
+            ))
+
+            return errorResult
         }
     }
 

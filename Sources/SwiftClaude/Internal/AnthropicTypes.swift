@@ -81,20 +81,45 @@ struct AnthropicContentBlock: Codable {
 
 // Made public for protocol
 public struct AnthropicTool: Codable, Sendable {
-    public let name: String
-    public let description: String
-    public let inputSchema: JSONSchema
+    // For custom tools
+    public let name: String?
+    public let description: String?
+    public let inputSchema: JSONSchema?
 
-    public init(name: String, description: String, inputSchema: JSONSchema) {
-        self.name = name
-        self.description = description
-        self.inputSchema = inputSchema
-    }
+    // For built-in tools (web_search, web_fetch, etc.)
+    public let type: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case description
         case inputSchema = "input_schema"
+        case type
+    }
+
+    /// Initialize a custom tool
+    public init(name: String, description: String, inputSchema: JSONSchema) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.type = nil
+    }
+
+    /// Initialize a built-in tool (web_search, web_fetch, etc.)
+    public init(type: String) {
+        self.name = nil
+        self.description = nil
+        self.inputSchema = nil
+        self.type = type
+    }
+
+    /// Web search tool (built-in by Anthropic)
+    public static var webSearch: AnthropicTool {
+        AnthropicTool(type: "web_search_20250314")
+    }
+
+    /// Web fetch tool (built-in by Anthropic)
+    public static var webFetch: AnthropicTool {
+        AnthropicTool(type: "web_fetch_20250314")
     }
 }
 
