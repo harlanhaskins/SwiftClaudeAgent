@@ -1,5 +1,6 @@
 import Foundation
 import SwiftClaude
+import ArgumentParser
 
 #if canImport(Glibc)
 import Glibc
@@ -7,90 +8,72 @@ import Glibc
 import Darwin
 #endif
 
+// ANSI color codes
+enum ANSIColor: String {
+    case reset = "\u{001B}[0m"
+    case gray = "\u{001B}[90m"
+    case cyan = "\u{001B}[36m"
+    case green = "\u{001B}[32m"
+    case red = "\u{001B}[31m"
+    case yellow = "\u{001B}[33m"
+}
+
 @main
-struct SwiftClaudeCLI {
-    static func main() async {
-        // Parse command-line arguments
-        let args = CommandLine.arguments
+struct SwiftClaudeCLI: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "swift-claude",
+        abstract: "Interactive Claude AI agent with tool support",
+        discussion: """
+        Run Claude agent commands from the CLI with optional tool support.
 
-        // Show usage if no prompt provided
-        guard args.count > 1 else {
-            printUsage()
-            exit(1)
+        Use -i/--interactive for a conversational REPL session, or provide
+        a prompt for single-shot execution.
+        """
+    )
+
+    @Flag(name: .shortAndLong, help: "Run in interactive mode (REPL)")
+    var interactive = false
+
+    @Option(name: .shortAndLong, help: "Comma-separated list of allowed tools (default: Read,Write,Bash)")
+    var tools: String = "Read,Write,Bash"
+
+    @Option(name: .shortAndLong, help: "Permission mode: manual, accept-edits, accept-all (default: accept-all)")
+    var permission: String = "accept-all"
+
+    @Option(name: .shortAndLong, help: "Working directory for Bash tool")
+    var workingDirectory: String?
+
+    @Argument(help: "The prompt to send to Claude (optional in interactive mode)")
+    var prompt: [String] = []
+
+    mutating func run() async throws {
+        // Parse allowed tools
+        let allowedTools: [String] = tools.split(separator: ",").map { String($0) }
+
+        // Parse permission mode
+        let permissionMode: PermissionMode
+        switch permission.lowercased() {
+        case "manual":
+            permissionMode = .manual
+        case "accept-edits":
+            permissionMode = .acceptEdits
+        case "accept-all":
+            permissionMode = .acceptAll
+        default:
+            throw ValidationError("Invalid permission mode: \(permission)")
         }
 
-        // Parse flags and prompt
-        var prompt = ""
-        var allowedTools: [String] = []
-        var permissionMode: PermissionMode = .manual
-        var workingDirectory: String?
+        // Get prompt string
+        let promptString = prompt.joined(separator: " ")
 
-        var i = 1
-        while i < args.count {
-            let arg = args[i]
-
-            switch arg {
-            case "-h", "--help":
-                printUsage()
-                exit(0)
-
-            case "-t", "--tools":
-                // Next argument is comma-separated tool list
-                i += 1
-                if i < args.count {
-                    allowedTools = args[i].split(separator: ",").map { String($0) }
-                }
-
-            case "-p", "--permission":
-                // Permission mode: manual, accept-edits, accept-all
-                i += 1
-                if i < args.count {
-                    switch args[i] {
-                    case "manual":
-                        permissionMode = .manual
-                    case "accept-edits":
-                        permissionMode = .acceptEdits
-                    case "accept-all":
-                        permissionMode = .acceptAll
-                    default:
-                        printError("Invalid permission mode: \(args[i])")
-                        exit(1)
-                    }
-                }
-
-            case "-w", "--working-directory":
-                i += 1
-                if i < args.count {
-                    workingDirectory = args[i]
-                }
-
-            default:
-                // Treat as prompt
-                if prompt.isEmpty {
-                    prompt = arg
-                } else {
-                    prompt += " " + arg
-                }
-            }
-
-            i += 1
+        // Validate prompt requirement
+        if !interactive && promptString.isEmpty {
+            throw ValidationError("Prompt required in non-interactive mode")
         }
 
-        guard !prompt.isEmpty else {
-            printError("No prompt provided")
-            printUsage()
-            exit(1)
-        }
-
-        // Load API key from environment or .env file
-        let apiKey: String
-        if let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] {
-            apiKey = envKey
-        } else if let dotEnvKey = try? await loadDotEnvAPIKey() {
-            apiKey = dotEnvKey
-        } else {
-            printError("API key not found. Set ANTHROPIC_API_KEY environment variable or create a .env file.")
-            exit(1)
+        // Load API key
+        guard let apiKey = loadAPIKey() else {
+            throw ValidationError("API key not found. Set ANTHROPIC_API_KEY environment variable or create a .env file.")
         }
 
         // Create options
@@ -102,77 +85,52 @@ struct SwiftClaudeCLI {
             workingDirectory: workingDir
         )
 
-        // Run the agent
-        await runAgent(prompt: prompt, options: options)
+        // Run in appropriate mode
+        if interactive {
+            await runInteractive(initialPrompt: promptString.isEmpty ? nil : promptString, options: options)
+        } else {
+            await runSingleShot(prompt: promptString, options: options)
+        }
     }
 
-    static func runAgent(prompt: String, options: ClaudeAgentOptions) async {
+    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions) async {
         let client = ClaudeClient(options: options)
 
-        print("🤖 Claude: ", terminator: "")
+        print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
+        print("\(ANSIColor.gray.rawValue)Type 'exit' or 'quit' to end the session\(ANSIColor.reset.rawValue)\n")
+
+        // Handle initial prompt if provided
+        if let initial = initialPrompt {
+            print("\(ANSIColor.green.rawValue)You:\(ANSIColor.reset.rawValue) \(initial)")
+            await streamResponse(client: client, prompt: initial)
+        }
+
+        // Interactive loop
+        while true {
+            print("\n\(ANSIColor.green.rawValue)You:\(ANSIColor.reset.rawValue) ", terminator: "")
+
+            guard let input = readLine(), !input.isEmpty else {
+                continue
+            }
+
+            let trimmed = input.trimmingCharacters(in: .whitespaces)
+            if trimmed.lowercased() == "exit" || trimmed.lowercased() == "quit" {
+                print("\(ANSIColor.cyan.rawValue)Goodbye!\(ANSIColor.reset.rawValue)")
+                break
+            }
+
+            await streamResponse(client: client, prompt: trimmed)
+        }
+    }
+
+    func runSingleShot(prompt: String, options: ClaudeAgentOptions) async {
+        let client = ClaudeClient(options: options)
+        print("🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
 
         var hasOutput = false
 
         for await message in await client.query(prompt) {
-            switch message {
-            case .assistant(let msg):
-                for block in msg.content {
-                    switch block {
-                    case .text(let textBlock):
-                        hasOutput = true
-                        print(textBlock.text, terminator: "")
-
-                    case .thinking(let thinkingBlock):
-                        if !hasOutput {
-                            print() // New line after prompt
-                            hasOutput = true
-                        }
-                        print("\n💭 [Thinking: \(thinkingBlock.thinking)]")
-
-                    case .toolUse(let toolUse):
-                        if !hasOutput {
-                            print() // New line after prompt
-                            hasOutput = true
-                        }
-                        print("\n🔧 Using tool: \(toolUse.name)")
-                        let inputDict = toolUse.input.toDictionary()
-                        for (key, value) in inputDict {
-                            print("   \(key): \(value)")
-                        }
-
-                    case .toolResult:
-                        break // Tool results are internal
-                    }
-                }
-
-            case .result(let resultMsg):
-                if !hasOutput {
-                    print() // New line after prompt
-                    hasOutput = true
-                }
-
-                if resultMsg.isError {
-                    print("\n❌ Tool Error:")
-                } else {
-                    print("\n✅ Tool Result:")
-                }
-
-                for block in resultMsg.content {
-                    if case .text(let text) = block {
-                        // Print tool result with indentation
-                        let lines = text.text.split(separator: "\n", omittingEmptySubsequences: false)
-                        for line in lines.prefix(20) { // Limit output
-                            print("   \(line)")
-                        }
-                        if lines.count > 20 {
-                            print("   ... (\(lines.count - 20) more lines)")
-                        }
-                    }
-                }
-
-            case .user, .system:
-                break // Don't print these
-            }
+            displayMessage(message, hasOutput: &hasOutput)
         }
 
         if hasOutput {
@@ -180,52 +138,98 @@ struct SwiftClaudeCLI {
         }
     }
 
-    static func printUsage() {
-        print("""
-        swift-claude - Run Claude agent commands from the CLI
+    func streamResponse(client: ClaudeClient, prompt: String) async {
+        print("\n🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
 
-        USAGE:
-            swift-claude [OPTIONS] <PROMPT>
+        var hasOutput = false
 
-        OPTIONS:
-            -h, --help                      Show this help message
-            -t, --tools <TOOLS>            Comma-separated list of allowed tools (e.g., Read,Write,Bash)
-            -p, --permission <MODE>         Permission mode: manual, accept-edits, accept-all
-            -w, --working-directory <DIR>   Working directory for Bash tool
+        for await message in await client.query(prompt) {
+            displayMessage(message, hasOutput: &hasOutput)
+        }
 
-        EXAMPLES:
-            # Simple query
-            swift-claude "What is 2 + 2?"
-
-            # With file tools
-            swift-claude -t Read,Write -p accept-edits "Read the README file"
-
-            # With Bash tool
-            swift-claude -t Bash -p accept-all "List all Swift files in the current directory"
-
-            # Multi-word prompt
-            swift-claude "Tell me a joke about programming"
-
-        ENVIRONMENT:
-            ANTHROPIC_API_KEY    Your Anthropic API key (required)
-
-        CONFIG FILES:
-            .env                 Load environment variables from .env file
-        """)
+        if hasOutput {
+            print() // Final newline
+        }
     }
 
-    static func printError(_ message: String) {
-        FileHandle.standardError.write("Error: \(message)\n".data(using: .utf8)!)
+    func displayMessage(_ message: Message, hasOutput: inout Bool) {
+        switch message {
+        case .assistant(let msg):
+            for block in msg.content {
+                switch block {
+                case .text(let textBlock):
+                    hasOutput = true
+                    print(textBlock.text, terminator: "")
+
+                case .thinking(let thinkingBlock):
+                    if !hasOutput {
+                        print() // New line after prompt
+                        hasOutput = true
+                    }
+                    print("\n\(ANSIColor.gray.rawValue)💭 [Thinking: \(thinkingBlock.thinking)]\(ANSIColor.reset.rawValue)")
+
+                case .toolUse(let toolUse):
+                    if !hasOutput {
+                        print() // New line after prompt
+                        hasOutput = true
+                    }
+                    print("\n\(ANSIColor.yellow.rawValue)🔧 Using tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
+                    let inputDict = toolUse.input.toDictionary()
+                    for (key, value) in inputDict {
+                        print("   \(key): \(value)")
+                    }
+
+                case .toolResult:
+                    break // Tool results are internal
+                }
+            }
+
+        case .result(let resultMsg):
+            if !hasOutput {
+                print() // New line after prompt
+                hasOutput = true
+            }
+
+            if resultMsg.isError {
+                print("\n\(ANSIColor.red.rawValue)❌ Tool Error:\(ANSIColor.reset.rawValue)")
+            } else {
+                print("\n\(ANSIColor.green.rawValue)✅ Tool Result:\(ANSIColor.reset.rawValue)")
+            }
+
+            for block in resultMsg.content {
+                if case .text(let text) = block {
+                    // Print tool result with indentation
+                    let lines = text.text.split(separator: "\n", omittingEmptySubsequences: false)
+                    for line in lines.prefix(20) { // Limit output
+                        print("   \(line)")
+                    }
+                    if lines.count > 20 {
+                        print("   ... (\(lines.count - 20) more lines)")
+                    }
+                }
+            }
+
+        case .user, .system:
+            break // Don't print these
+        }
     }
 
-    // Helper to load API key from .env file
-    static func loadDotEnvAPIKey() async throws -> String? {
+    func loadAPIKey() -> String? {
+        // Try environment variable first
+        if let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] {
+            return envKey
+        }
+
+        // Try .env file
         let envPath = ".env"
         guard FileManager.default.fileExists(atPath: envPath) else {
             return nil
         }
 
-        let content = try String(contentsOfFile: envPath, encoding: .utf8)
+        guard let content = try? String(contentsOfFile: envPath, encoding: .utf8) else {
+            return nil
+        }
+
         for line in content.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("#") || trimmed.isEmpty {

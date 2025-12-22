@@ -21,6 +21,9 @@ let package = Package(
             targets: ["SwiftClaudeCLI"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
+    ],
     targets: [
         // Main library target
         .target(
@@ -29,7 +32,10 @@ let package = Package(
         // CLI executable target
         .executableTarget(
             name: "SwiftClaudeCLI",
-            dependencies: ["SwiftClaude"]
+            dependencies: [
+                "SwiftClaude",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
         ),
         // Tests
         .testTarget(
