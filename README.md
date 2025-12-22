@@ -12,7 +12,8 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Proper Cancellation** - Full support for Task cancellation
 - ✅ **Direct API Integration** - Communicates directly with Anthropic API
 - ✅ **Environment Config** - Load API keys from .env files
-- 🚧 **Tools Support** - Coming soon (Read, Write, Bash)
+- ✅ **Tools Support** - Built-in Read, Write, and Bash tools with typed inputs
+- ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
 - 🚧 **MCP Integration** - Coming soon (custom tool servers)
 - 🚧 **Hooks System** - Coming soon (lifecycle callbacks)
 
@@ -30,34 +31,16 @@ dependencies: [
 
 ## Quick Start
 
-### 1. Set Up API Key
+### 1. Get Your API Key
 
-**Option A: Using .env file (Recommended)**
-
-```bash
-# Copy example file
-cp .env.example .env
-
-# Edit .env and add your API key
-# ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-
-**Option B: Using environment variable**
-
-```bash
-export ANTHROPIC_API_KEY='sk-ant-your-key-here'
-```
+Get an API key from [Anthropic](https://console.anthropic.com/settings/keys).
 
 ### 2. Simple Query
 
 ```swift
 import SwiftClaude
 
-// Load API key from .env or environment
-guard let apiKey = await getAPIKey() else {
-    print("API key not found")
-    return
-}
+let apiKey = "your-api-key-here" // Or load from your app's secure storage
 
 let options = ClaudeAgentOptions(apiKey: apiKey)
 
@@ -73,7 +56,7 @@ for await message in query(prompt: "What is 2 + 2?", options: options) {
 ### 3. Interactive Session
 
 ```swift
-guard let apiKey = await getAPIKey() else { return }
+let apiKey = "your-api-key-here"
 
 let client = ClaudeClient(options: .init(
     systemPrompt: "You are a helpful assistant",
@@ -92,19 +75,6 @@ for await message in client.query("What did I just say?") {
 ```
 
 ## API Reference
-
-### Loading API Keys
-
-```swift
-// Load from .env file (or environment)
-let apiKey = await getAPIKey()
-
-// Load from custom path
-let apiKey = await getAPIKey(from: "config/.env")
-
-// Load all variables
-let vars = try await loadDotEnv()
-```
 
 ### ClaudeAgentOptions
 
@@ -194,7 +164,7 @@ for await message in client.query("Hello") {
 ### Multi-Turn Conversation
 
 ```swift
-guard let apiKey = await getAPIKey() else { return }
+let apiKey = "your-api-key-here"
 
 let client = ClaudeClient(options: .init(apiKey: apiKey))
 
@@ -223,14 +193,29 @@ try await Task.sleep(for: .seconds(5))
 await client.cancel()
 ```
 
-## Running Examples
+## Running the CLI
+
+The CLI supports .env files for convenience:
 
 ```bash
-# 1. Set up .env file
+# 1. Set up .env file (CLI only)
 cp .env.example .env
 # Edit .env and add your API key
 
-# 2. Run examples
+# 2. Run the CLI
+swift run swift-claude "What is 2 + 2?"
+
+# Or use interactive mode
+swift run swift-claude -i
+```
+
+## Running Examples
+
+```bash
+# Set API key environment variable
+export ANTHROPIC_API_KEY='your-api-key-here'
+
+# Run examples
 swift run QuickStart
 swift run RealAPIExample
 ```
@@ -248,12 +233,7 @@ swift test
 Integration tests require a valid API key:
 
 ```bash
-# Option 1: Use .env file
-cp .env.example .env
-# Add your API key to .env
-swift test
-
-# Option 2: Use environment variable
+# Set environment variable
 export ANTHROPIC_API_KEY='your-key-here'
 swift test
 ```
@@ -265,7 +245,6 @@ swift test
 │  Public API                      │
 │  - query()                       │
 │  - ClaudeClient                  │
-│  - getAPIKey() (.env support)   │
 └──────────────┬──────────────────┘
                │
 ┌──────────────▼──────────────────┐
@@ -273,7 +252,8 @@ swift test
 │  - AnthropicAPIClient (actor)   │
 │  - MessageConverter (actor)     │
 │  - SSEParser (actor)            │
-│  - DotEnv (actor)               │
+│  - ToolRegistry (actor)         │
+│  - ToolExecutor (actor)         │
 └──────────────┬──────────────────┘
                │
 ┌──────────────▼──────────────────┐
@@ -281,18 +261,16 @@ swift test
 └─────────────────────────────────┘
 ```
 
-## .env File Format
+## CLI .env File Format
+
+The CLI (not the library) supports .env files for convenience:
 
 ```bash
-# Anthropic API Key (required)
+# Anthropic API Key (required for CLI)
 ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# Optional: Default model
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
-
-# Optional: Default system prompt
-SYSTEM_PROMPT="You are a helpful assistant"
 ```
+
+**Note:** The library itself does not read .env files. When using SwiftClaude as a library in your app, you should manage API keys using your app's secure storage (Keychain on Apple platforms, environment variables for server apps, etc.).
 
 ## Requirements
 

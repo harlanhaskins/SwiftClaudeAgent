@@ -7,12 +7,10 @@ struct QuickStart {
     static func main() async {
         print("SwiftClaude Quick Start Examples\n")
 
-        // Load API key from .env file
-        guard let apiKey = await getAPIKey() else {
-            print("Error: ANTHROPIC_API_KEY not found")
-            print("Create a .env file with your API key:")
-            print("  ANTHROPIC_API_KEY=sk-ant-your-key-here")
-            print("\nOr set environment variable:")
+        // Load API key from environment variable
+        guard let apiKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] else {
+            print("Error: ANTHROPIC_API_KEY environment variable not set")
+            print("Set it with:")
             print("  export ANTHROPIC_API_KEY='sk-ant-your-key-here'")
             return
         }

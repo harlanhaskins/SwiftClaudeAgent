@@ -8,11 +8,11 @@
 ///
 /// # Quick Start
 ///
-/// Simple query with .env file:
+/// Simple query:
 /// ```swift
 /// import SwiftClaude
 ///
-/// guard let apiKey = await getAPIKey() else { return }
+/// let apiKey = "your-api-key-here"
 ///
 /// for await message in query(prompt: "Hello!", options: .init(apiKey: apiKey)) {
 ///     print(message)
@@ -23,7 +23,7 @@
 /// ```swift
 /// import SwiftClaude
 ///
-/// guard let apiKey = await getAPIKey() else { return }
+/// let apiKey = "your-api-key-here"
 ///
 /// let client = ClaudeClient(options: .init(apiKey: apiKey))
 /// for await message in client.query("Tell me a joke") {

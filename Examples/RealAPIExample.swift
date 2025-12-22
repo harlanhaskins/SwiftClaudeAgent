@@ -2,17 +2,14 @@ import SwiftClaude
 import Foundation
 
 /// Example using the real Anthropic API
-/// Create a .env file with your API key or set ANTHROPIC_API_KEY environment variable
+/// Set ANTHROPIC_API_KEY environment variable before running
 @main
 struct RealAPIExample {
     static func main() async {
-        // Load API key from .env file or environment
-        guard let apiKey = await getAPIKey() else {
-            print("Error: ANTHROPIC_API_KEY not found")
-            print("\nOption 1: Create a .env file:")
-            print("  cp .env.example .env")
-            print("  # Edit .env and add your API key")
-            print("\nOption 2: Set environment variable:")
+        // Load API key from environment variable
+        guard let apiKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] else {
+            print("Error: ANTHROPIC_API_KEY environment variable not set")
+            print("Set it with:")
             print("  export ANTHROPIC_API_KEY='sk-ant-your-key-here'")
             return
         }
@@ -145,8 +142,8 @@ struct RealAPIExample {
 /// Run an interactive session
 struct InteractiveExample {
     static func run() async {
-        guard let apiKey = await getAPIKey() else {
-            print("Error: ANTHROPIC_API_KEY not found")
+        guard let apiKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] else {
+            print("Error: ANTHROPIC_API_KEY environment variable not set")
             return
         }
 
