@@ -1,0 +1,40 @@
+// swift-tools-version: 6.2
+// The swift-tools-version declares the minimum version of Swift required to build this package.
+
+import PackageDescription
+
+let package = Package(
+    name: "SwiftClaude",
+    platforms: [
+        .macOS(.v13),
+        .iOS(.v16)
+    ],
+    products: [
+        // Library for importing into other Swift packages
+        .library(
+            name: "SwiftClaude",
+            targets: ["SwiftClaude"]
+        ),
+        // CLI executable for running agent commands
+        .executable(
+            name: "swift-claude",
+            targets: ["SwiftClaudeCLI"]
+        ),
+    ],
+    targets: [
+        // Main library target
+        .target(
+            name: "SwiftClaude"
+        ),
+        // CLI executable target
+        .executableTarget(
+            name: "SwiftClaudeCLI",
+            dependencies: ["SwiftClaude"]
+        ),
+        // Tests
+        .testTarget(
+            name: "SwiftClaudeTests",
+            dependencies: ["SwiftClaude"]
+        ),
+    ]
+)
