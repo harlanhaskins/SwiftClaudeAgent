@@ -228,24 +228,7 @@ public actor ClaudeClient {
             conversationHistory.append(userMessage)
 
             // Get tool definitions if tools are enabled
-            var tools: [AnthropicTool]? = options.allowedTools.isEmpty ? nil : await toolExecutor.getAnthropicTools()
-
-            // Add built-in tools if enabled
-            if options.enableWebSearch || options.enableWebFetch {
-                var builtInTools: [AnthropicTool] = []
-                if options.enableWebSearch {
-                    builtInTools.append(.webSearch)
-                }
-                if options.enableWebFetch {
-                    builtInTools.append(.webFetch)
-                }
-
-                if tools != nil {
-                    tools?.append(contentsOf: builtInTools)
-                } else {
-                    tools = builtInTools
-                }
-            }
+            let tools: [AnthropicTool]? = options.allowedTools.isEmpty ? nil : await toolExecutor.getAnthropicTools()
 
             // Execute conversation loop until no more tool uses
             var continueLoop = true

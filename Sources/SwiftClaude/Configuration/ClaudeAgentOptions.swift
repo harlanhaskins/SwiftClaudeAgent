@@ -10,8 +10,6 @@ public struct ClaudeAgentOptions: Sendable {
     public let apiKey: String
     public let model: String
     public let workingDirectory: URL?
-    public let enableWebSearch: Bool
-    public let enableWebFetch: Bool
 
     public init(
         systemPrompt: String? = nil,
@@ -20,9 +18,7 @@ public struct ClaudeAgentOptions: Sendable {
         permissionMode: PermissionMode = .manual,
         apiKey: String,
         model: String = "claude-sonnet-4-5-20250929",
-        workingDirectory: URL? = nil,
-        enableWebSearch: Bool = false,
-        enableWebFetch: Bool = false
+        workingDirectory: URL? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.allowedTools = allowedTools
@@ -31,8 +27,6 @@ public struct ClaudeAgentOptions: Sendable {
         self.apiKey = apiKey
         self.model = model
         self.workingDirectory = workingDirectory
-        self.enableWebSearch = enableWebSearch
-        self.enableWebFetch = enableWebFetch
     }
 
     public static var `default`: ClaudeAgentOptions {

@@ -37,7 +37,7 @@ public actor ToolRegistry {
     /// - Parameter registerBuiltIns: Whether to register built-in tools (default: true)
     public init(registerBuiltIns: Bool = true, workingDirectory: URL? = nil) {
         if registerBuiltIns {
-            // Register built-in tools - names come from tool.name (derived from type)
+            // Register custom built-in tools (executed locally)
             let readTool = ReadTool()
             let writeTool = WriteTool()
             let bashTool = BashTool(workingDirectory: workingDirectory)
@@ -45,6 +45,13 @@ public actor ToolRegistry {
             tools[readTool.name] = readTool
             tools[writeTool.name] = writeTool
             tools[bashTool.name] = bashTool
+
+            // Register Anthropic built-in tools (executed server-side)
+            let webSearchTool = WebSearchTool()
+            let webFetchTool = WebFetchTool()
+
+            tools[webSearchTool.name] = webSearchTool
+            tools[webFetchTool.name] = webFetchTool
         }
     }
 
@@ -137,11 +144,18 @@ public actor ToolRegistry {
         }
 
         return selectedTools.map { tool in
-            AnthropicTool(
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema
-            )
+            // Check if this is a built-in tool (executed by Anthropic)
+            if let builtInTool = tool as? any BuiltInTool {
+                // Built-in tools use the type field
+                return AnthropicTool(type: builtInTool.anthropicType)
+            } else {
+                // Custom tools use name/description/schema
+                return AnthropicTool(
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema
+                )
+            }
         }
     }
 
@@ -176,7 +190,7 @@ public actor ToolRegistry {
 extension ToolRegistry {
     /// Create a registry with only specific built-in tools
     /// - Parameters:
-    ///   - toolNames: Names of built-in tools to include (e.g., ["Read", "Write"])
+    ///   - toolNames: Names of built-in tools to include (e.g., ["Read", "Write", "WebSearch"])
     ///   - workingDirectory: Working directory for Bash tool
     /// - Returns: A new registry with the specified tools
     public static func withBuiltInTools(_ toolNames: [String], workingDirectory: URL? = nil) -> ToolRegistry {
@@ -186,7 +200,9 @@ extension ToolRegistry {
         let allBuiltInTools: [any Tool] = [
             ReadTool(),
             WriteTool(),
-            BashTool(workingDirectory: workingDirectory)
+            BashTool(workingDirectory: workingDirectory),
+            WebSearchTool(),
+            WebFetchTool()
         ]
 
         Task {

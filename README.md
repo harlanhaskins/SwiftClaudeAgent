@@ -268,13 +268,12 @@ await client.addHook(.onError) { (context: ErrorContext) in
 
 ### Web Search and Fetch
 
-Enable Claude's built-in web search and fetch capabilities:
+Enable Claude's built-in web search and fetch capabilities by including them in `allowedTools`:
 
 ```swift
 let options = ClaudeAgentOptions(
     apiKey: apiKey,
-    enableWebSearch: true,  // Enable web search
-    enableWebFetch: true    // Enable web fetch
+    allowedTools: ["WebSearch", "WebFetch"]  // Add built-in web tools
 )
 
 let client = ClaudeClient(options: options)
@@ -289,7 +288,11 @@ for await message in client.query("Summarize the content at https://swift.org") 
 }
 ```
 
-**Note:** Web tools are powered by Anthropic and don't require custom implementation. Just enable them in options!
+**Built-in web tools:**
+- `WebSearch` - Search the web for current information (powered by Anthropic)
+- `WebFetch` - Fetch and read content from URLs (powered by Anthropic)
+
+These tools are executed server-side by Anthropic, not locally. They're registered in the shared `ToolRegistry` by default along with Read, Write, and Bash.
 
 ## Running the CLI
 
