@@ -41,10 +41,16 @@ public actor ToolRegistry {
             let readTool = ReadTool()
             let writeTool = WriteTool()
             let bashTool = BashTool(workingDirectory: workingDirectory)
+            let globTool = GlobTool()
+            let grepTool = GrepTool()
+            let listTool = ListTool()
 
             tools[readTool.name] = readTool
             tools[writeTool.name] = writeTool
             tools[bashTool.name] = bashTool
+            tools[globTool.name] = globTool
+            tools[grepTool.name] = grepTool
+            tools[listTool.name] = listTool
 
             // Register Anthropic built-in tools (executed server-side)
             let webSearchTool = WebSearchTool()
@@ -201,6 +207,9 @@ extension ToolRegistry {
             ReadTool(),
             WriteTool(),
             BashTool(workingDirectory: workingDirectory),
+            GlobTool(),
+            GrepTool(),
+            ListTool(),
             WebSearchTool(),
             WebFetchTool()
         ]

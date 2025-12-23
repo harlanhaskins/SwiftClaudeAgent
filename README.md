@@ -13,7 +13,7 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Proper Cancellation** - Full support for Task cancellation
 - ✅ **Direct API Integration** - Communicates directly with Anthropic API
 - ✅ **Environment Config** - Load API keys from .env files
-- ✅ **Tools Support** - Built-in Read, Write, and Bash tools with typed inputs
+- ✅ **Tools Support** - Built-in Read, Write, Bash, Glob, Grep, and List tools with typed inputs
 - ✅ **Web Tools** - Built-in web search and fetch via Claude API
 - ✅ **Hooks System** - Lifecycle hooks for logging, permissions, and observability
 - ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
@@ -294,6 +294,44 @@ for await message in client.query("Summarize the content at https://swift.org") 
 
 These tools are executed server-side by Anthropic, not locally. They're registered in the shared `ToolRegistry` by default along with Read, Write, and Bash.
 
+### File Operation Tools
+
+Built-in tools for working with the filesystem:
+
+```swift
+let options = ClaudeAgentOptions(
+    apiKey: apiKey,
+    allowedTools: ["Read", "Write", "Bash", "Glob", "Grep", "List"]
+)
+
+let client = ClaudeClient(options: options)
+
+// Find files by pattern
+for await message in client.query("Find all Swift files in the project") {
+    // Claude will use Glob tool with pattern "**/*.swift"
+}
+
+// Search file contents
+for await message in client.query("Search for all TODO comments in the code") {
+    // Claude will use Grep tool with pattern "TODO"
+}
+
+// List directory contents
+for await message in client.query("What files are in the Sources directory?") {
+    // Claude will use List tool
+}
+```
+
+**Available file tools:**
+- `Read` - Read file contents with optional line ranges
+- `Write` - Write or create files with automatic directory creation
+- `Bash` - Execute shell commands with timeout protection
+- `Glob` - Find files matching glob patterns (e.g., `**/*.swift`)
+- `Grep` - Search file contents with regex patterns
+- `List` - List directory contents with recursive and hidden file options
+
+All file operation tools are executed locally and are registered in the shared `ToolRegistry` by default.
+
 ## Running the CLI
 
 The CLI supports .env files for convenience:
@@ -417,22 +455,20 @@ do {
 - [x] Proper cancellation
 - [x] .env file support
 
-### Phase 2: Tools (In Progress)
-- [ ] Tool protocol
-- [ ] Built-in tools (Read, Write, Bash)
-- [ ] Tool execution engine
-- [ ] Permission system
+### Phase 2: Tools System ✅ COMPLETE
+- [x] Tool protocol with typed inputs
+- [x] Built-in tools (Read, Write, Bash, Glob, Grep, List)
+- [x] Tool execution engine
+- [x] Permission system
+- [x] ToolRegistry for tool management
+- [x] Hooks system for lifecycle events
+- [x] Built-in tool protocol for server-side tools
+- [x] Web search and fetch integration
 
 ### Phase 3: MCP Integration
 - [ ] In-process MCP servers
 - [ ] Custom tool definition
 - [ ] Tool registration
-
-### Phase 4: Hooks
-- [ ] PreToolUse hooks
-- [ ] PostToolUse hooks
-- [ ] UserPromptSubmit hooks
-- [ ] Hook manager
 
 ## Contributing
 

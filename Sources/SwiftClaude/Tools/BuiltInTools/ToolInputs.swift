@@ -87,3 +87,109 @@ public struct BashToolInput: Codable, Sendable, Equatable {
         )
     }
 }
+
+// MARK: - Glob Tool Input
+
+public struct GlobToolInput: Codable, Sendable, Equatable {
+    public let pattern: String
+    public let path: String?
+
+    public init(pattern: String, path: String? = nil) {
+        self.pattern = pattern
+        self.path = path
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pattern
+        case path
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "pattern": .string(description: "Glob pattern to match files (e.g., '**/*.swift', '*.txt')"),
+                "path": .string(description: "Directory to search in (default: current directory)")
+            ],
+            required: ["pattern"]
+        )
+    }
+}
+
+// MARK: - Grep Tool Input
+
+public struct GrepToolInput: Codable, Sendable, Equatable {
+    public let pattern: String
+    public let path: String?
+    public let filePattern: String?
+    public let ignoreCase: Bool?
+    public let maxResults: Int?
+
+    public init(
+        pattern: String,
+        path: String? = nil,
+        filePattern: String? = nil,
+        ignoreCase: Bool? = nil,
+        maxResults: Int? = nil
+    ) {
+        self.pattern = pattern
+        self.path = path
+        self.filePattern = filePattern
+        self.ignoreCase = ignoreCase
+        self.maxResults = maxResults
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pattern
+        case path
+        case filePattern = "file_pattern"
+        case ignoreCase = "ignore_case"
+        case maxResults = "max_results"
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "pattern": .string(description: "Regular expression pattern to search for"),
+                "path": .string(description: "File or directory to search in (default: current directory)"),
+                "file_pattern": .string(description: "Glob pattern to filter files (e.g., '*.swift')"),
+                "ignore_case": .boolean(description: "Case insensitive search (default: false)"),
+                "max_results": .integer(description: "Maximum number of results to return (default: 100)")
+            ],
+            required: ["pattern"]
+        )
+    }
+}
+
+// MARK: - List Tool Input
+
+public struct ListToolInput: Codable, Sendable, Equatable {
+    public let path: String
+    public let recursive: Bool?
+    public let showHidden: Bool?
+
+    public init(path: String, recursive: Bool? = nil, showHidden: Bool? = nil) {
+        self.path = path
+        self.recursive = recursive
+        self.showHidden = showHidden
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case recursive
+        case showHidden = "show_hidden"
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "path": .string(description: "Directory path to list"),
+                "recursive": .boolean(description: "Recursively list subdirectories (default: false)"),
+                "show_hidden": .boolean(description: "Show hidden files (default: false)")
+            ],
+            required: ["path"]
+        )
+    }
+}
