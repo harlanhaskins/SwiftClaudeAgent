@@ -5,14 +5,14 @@ import Foundation
 /// Actor responsible for executing tools with permission checks.
 ///
 /// The ToolExecutor handles permission checking and delegates tool execution
-/// to the ToolRegistry. It enforces allowed tools lists and permission modes.
+/// to the ToolRegistry. It enforces permission modes for tool execution.
+/// Tool availability is controlled by what's registered in the registry.
 ///
 /// # Example
 /// ```swift
 /// let registry = ToolRegistry.shared
 /// let executor = ToolExecutor(
 ///     registry: registry,
-///     allowedTools: ["Read", "Write"],
 ///     permissionMode: .acceptEdits
 /// )
 ///
@@ -27,7 +27,6 @@ public actor ToolExecutor {
     // MARK: - Properties
 
     private let registry: ToolRegistry
-    private let allowedTools: Set<String>
     private let permissionMode: PermissionMode
 
     // MARK: - Initialization
@@ -35,28 +34,21 @@ public actor ToolExecutor {
     /// Initialize a tool executor
     /// - Parameters:
     ///   - registry: The tool registry to use (defaults to shared registry)
-    ///   - allowedTools: List of tool names that are allowed to execute (empty = all)
     ///   - permissionMode: How to handle permission requests
     public init(
         registry: ToolRegistry = .shared,
-        allowedTools: [String] = [],
         permissionMode: PermissionMode = .manual
     ) {
         self.registry = registry
-        self.allowedTools = Set(allowedTools)
         self.permissionMode = permissionMode
     }
 
     // MARK: - API Integration
 
-    /// Get tool definitions in Anthropic API format
+    /// Tool definitions in Anthropic API format
     /// - Returns: Array of AnthropicTool objects ready for API requests
-    public func getAnthropicTools() async -> [AnthropicTool] {
-        if allowedTools.isEmpty {
-            return await registry.getAnthropicTools()
-        } else {
-            return await registry.getAnthropicTools(for: Array(allowedTools))
-        }
+    public func anthropicTools() async -> [AnthropicTool] {
+        return await registry.anthropicTools()
     }
 
     // MARK: - Tool Execution
@@ -78,13 +70,11 @@ public actor ToolExecutor {
             throw ToolError.notFound("Tool '\(toolName)' not found in registry")
         }
 
-        // Check if tool is allowed
-        if !allowedTools.isEmpty && !allowedTools.contains(toolName) {
-            throw ToolError.permissionDenied("Tool '\(toolName)' is not in allowed tools list")
-        }
+        // Get tool's permission categories
+        let categories = await registry.permissionCategories(for: toolName)
 
         // Check permissions based on mode
-        let hasPermission = checkPermission(toolName: toolName)
+        let hasPermission = checkPermission(categories: categories)
 
         guard hasPermission else {
             throw ToolError.permissionDenied("User denied permission for tool '\(toolName)'")
@@ -97,9 +87,9 @@ public actor ToolExecutor {
     // MARK: - Permission Checking
 
     /// Check if permission is granted to execute a tool
-    /// - Parameter toolName: Name of the tool
+    /// - Parameter categories: Permission categories of the tool
     /// - Returns: True if permission is granted
-    private func checkPermission(toolName: String) -> Bool {
-        return permissionMode.shouldAllow(tool: toolName)
+    private func checkPermission(categories: ToolPermissionCategory) -> Bool {
+        return permissionMode.shouldAllow(categories: categories)
     }
 }

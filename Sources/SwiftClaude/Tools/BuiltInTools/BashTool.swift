@@ -26,6 +26,10 @@ public struct BashTool: Tool {
         BashToolInput.schema
     }
 
+    public var permissionCategories: ToolPermissionCategory {
+        [.execute]
+    }
+
     /// Initialize a Bash tool
     /// - Parameters:
     ///   - workingDirectory: Working directory for command execution (default: current directory)

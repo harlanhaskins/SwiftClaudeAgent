@@ -1,5 +1,59 @@
 import Foundation
 
+// MARK: - Tool Registry Builder
+
+/// Result builder for declaratively constructing tool registries.
+///
+/// Supports conditional registration with if statements and loops.
+///
+/// # Example
+/// ```swift
+/// let registry = ToolRegistry {
+///     ReadTool()
+///     WriteTool()
+///     if needsBash {
+///         BashTool(workingDirectory: workingDir)
+///     }
+///     GlobTool()
+///     if enableNetwork {
+///         FetchTool()
+///         WebSearchTool()
+///     }
+/// }
+/// ```
+@resultBuilder
+public struct ToolRegistryBuilder {
+    public static func buildBlock(_ tools: any Tool...) -> [any Tool] {
+        Array(tools)
+    }
+
+    public static func buildOptional(_ tools: [any Tool]?) -> [any Tool] {
+        tools ?? []
+    }
+
+    public static func buildEither(first tools: [any Tool]) -> [any Tool] {
+        tools
+    }
+
+    public static func buildEither(second tools: [any Tool]) -> [any Tool] {
+        tools
+    }
+
+    public static func buildArray(_ tools: [[any Tool]]) -> [any Tool] {
+        tools.flatMap { $0 }
+    }
+
+    public static func buildExpression(_ tool: any Tool) -> [any Tool] {
+        [tool]
+    }
+
+    public static func buildExpression(_ tools: [any Tool]) -> [any Tool] {
+        tools
+    }
+}
+
+// MARK: - Tool Registry
+
 /// Centralized registry for all available tools.
 ///
 /// The ToolRegistry maintains a single source of truth for all tools in the system,
@@ -44,6 +98,7 @@ public actor ToolRegistry {
             let globTool = GlobTool()
             let grepTool = GrepTool()
             let listTool = ListTool()
+            let fetchTool = FetchTool()
 
             tools[readTool.name] = readTool
             tools[writeTool.name] = writeTool
@@ -51,11 +106,38 @@ public actor ToolRegistry {
             tools[globTool.name] = globTool
             tools[grepTool.name] = grepTool
             tools[listTool.name] = listTool
+            tools[fetchTool.name] = fetchTool
 
             // Register Anthropic built-in tools (executed server-side)
             let webSearchTool = WebSearchTool()
 
             tools[webSearchTool.name] = webSearchTool
+        }
+    }
+
+    /// Initialize a registry with tools using a result builder.
+    ///
+    /// This provides a declarative, type-safe way to construct a registry with specific tools.
+    /// Supports conditional registration with if statements and loops.
+    ///
+    /// # Example
+    /// ```swift
+    /// let registry = ToolRegistry {
+    ///     ReadTool()
+    ///     WriteTool()
+    ///     if needsBash {
+    ///         BashTool(workingDirectory: workingDir)
+    ///     }
+    ///     if enableNetwork {
+    ///         FetchTool()
+    ///         WebSearchTool()
+    ///     }
+    /// }
+    /// ```
+    public init(@ToolRegistryBuilder _ buildTools: () -> [any Tool]) {
+        let toolList = buildTools()
+        for tool in toolList {
+            tools[tool.name] = tool
         }
     }
 
@@ -91,7 +173,7 @@ public actor ToolRegistry {
     /// Get a tool by name
     /// - Parameter name: The tool name
     /// - Returns: The tool if found, nil otherwise
-    public func getTool(named name: String) -> (any Tool)? {
+    public func tool(named name: String) -> (any Tool)? {
         return tools[name]
     }
 
@@ -102,9 +184,19 @@ public actor ToolRegistry {
         return tools[name] != nil
     }
 
-    /// Get all registered tool names
+    /// Get permission categories for a tool
+    /// - Parameter name: The tool name
+    /// - Returns: The tool's permission categories, or empty if tool not found
+    public func permissionCategories(for name: String) -> ToolPermissionCategory {
+        guard let tool = tools[name] else {
+            return []
+        }
+        return tool.permissionCategories
+    }
+
+    /// All registered tool names
     /// - Returns: Array of tool names
-    public func getAllToolNames() -> [String] {
+    public var toolNames: [String] {
         return Array(tools.keys).sorted()
     }
 
@@ -116,10 +208,10 @@ public actor ToolRegistry {
 
     // MARK: - API Integration
 
-    /// Get JSON schemas for Anthropic API format
+    /// JSON schemas for Anthropic API format
     /// - Parameter names: Array of tool names to include (empty = all tools)
     /// - Returns: Dictionary mapping tool names to their schemas
-    public func getSchemas(for names: [String] = []) -> [String: JSONSchema] {
+    public func schemas(for names: [String] = []) -> [String: JSONSchema] {
         let selectedTools: [any Tool]
 
         if names.isEmpty {
@@ -135,10 +227,10 @@ public actor ToolRegistry {
         return schemas
     }
 
-    /// Get tools in Anthropic API format
+    /// Tools in Anthropic API format
     /// - Parameter names: Array of tool names to include (empty = all tools)
     /// - Returns: Array of AnthropicTool objects ready for API requests
-    public func getAnthropicTools(for names: [String] = []) -> [AnthropicTool] {
+    public func anthropicTools(for names: [String] = []) -> [AnthropicTool] {
         let selectedTools: [any Tool]
 
         if names.isEmpty {
@@ -150,8 +242,8 @@ public actor ToolRegistry {
         return selectedTools.map { tool in
             // Check if this is a built-in tool (executed by Anthropic)
             if let builtInTool = tool as? any BuiltInTool {
-                // Built-in tools use both type and name fields
-                return AnthropicTool(type: builtInTool.anthropicType, name: tool.name)
+                // Built-in tools use both type and API name fields
+                return AnthropicTool(type: builtInTool.anthropicType, name: builtInTool.anthropicName)
             } else {
                 // Custom tools use name/description/schema
                 return AnthropicTool(
@@ -192,6 +284,27 @@ public actor ToolRegistry {
 // MARK: - Built-in Tool Registration
 
 extension ToolRegistry {
+    /// All default built-in tools with BashTool configured for current working directory.
+    ///
+    /// Useful for composing with the result builder:
+    /// ```swift
+    /// let registry = ToolRegistry {
+    ///     ToolRegistry.defaultTools
+    /// }
+    /// ```
+    public static var defaultTools: [any Tool] {
+        [
+            ReadTool(),
+            WriteTool(),
+            BashTool(workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)),
+            GlobTool(),
+            GrepTool(),
+            ListTool(),
+            FetchTool(),
+            WebSearchTool()
+        ]
+    }
+
     /// Create a registry with only specific built-in tools
     /// - Parameters:
     ///   - toolNames: Names of built-in tools to include (e.g., ["Read", "Write", "WebSearch"])
@@ -208,6 +321,7 @@ extension ToolRegistry {
             GlobTool(),
             GrepTool(),
             ListTool(),
+            FetchTool(),
             WebSearchTool()
         ]
 

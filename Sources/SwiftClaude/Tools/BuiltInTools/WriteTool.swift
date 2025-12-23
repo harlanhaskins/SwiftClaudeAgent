@@ -23,6 +23,10 @@ public struct WriteTool: Tool {
         WriteToolInput.schema
     }
 
+    public var permissionCategories: ToolPermissionCategory {
+        [.write]
+    }
+
     public init() {}
 
     public func execute(input: WriteToolInput) async throws -> ToolResult {

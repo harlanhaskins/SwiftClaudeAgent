@@ -85,11 +85,11 @@ Configure the behavior of Claude:
 ```swift
 let options = ClaudeAgentOptions(
     systemPrompt: String?,        // System instructions
-    allowedTools: [String],        // Tools Claude can use (future)
     maxTurns: Int?,               // Maximum conversation turns
     permissionMode: PermissionMode, // Tool permission mode
     apiKey: String,               // Anthropic API key
-    model: String                 // Model to use (default: claude-3-5-sonnet-20241022)
+    model: String,                // Model to use (default: claude-sonnet-4-5-20250929)
+    workingDirectory: URL?        // Working directory for Bash tool
 )
 ```
 
@@ -268,17 +268,12 @@ await client.addHook(.onError) { (context: ErrorContext) in
 
 ### Web Search
 
-Enable Claude's built-in web search capability by including it in `allowedTools`:
+Claude's built-in web search capability is available by default when using the shared `ToolRegistry`:
 
 ```swift
-let options = ClaudeAgentOptions(
-    apiKey: apiKey,
-    allowedTools: ["WebSearch"]  // Add built-in web search tool
-)
+let client = ClaudeClient(options: .init(apiKey: apiKey))
 
-let client = ClaudeClient(options: options)
-
-// Claude can now search the web
+// Claude can search the web automatically when needed
 for await message in client.query("What's the latest news about Swift 6?") {
     // Claude will use web_search to find current information
 }
@@ -291,15 +286,10 @@ This tool is executed server-side by Anthropic, not locally. It's registered in 
 
 ### File Operation Tools
 
-Built-in tools for working with the filesystem:
+Built-in tools for working with the filesystem are available by default:
 
 ```swift
-let options = ClaudeAgentOptions(
-    apiKey: apiKey,
-    allowedTools: ["Read", "Write", "Bash", "Glob", "Grep", "List"]
-)
-
-let client = ClaudeClient(options: options)
+let client = ClaudeClient(options: .init(apiKey: apiKey))
 
 // Find files by pattern
 for await message in client.query("Find all Swift files in the project") {
@@ -327,20 +317,91 @@ for await message in client.query("What files are in the Sources directory?") {
 
 All file operation tools are executed locally and are registered in the shared `ToolRegistry` by default.
 
+#### Restricting Available Tools
+
+Use the result builder API to declaratively create a registry with specific tools:
+
+```swift
+// Type-safe tool selection with conditional logic
+let registry = ToolRegistry {
+    ReadTool()
+    ListTool()
+    GlobTool()
+
+    if enableWriting {
+        WriteTool()
+    }
+
+    if enableNetworking {
+        FetchTool()
+        WebSearchTool()
+    }
+}
+
+let client = ClaudeClient(
+    options: .init(apiKey: apiKey),
+    registry: registry
+)
+```
+
+Or use all default tools:
+
+```swift
+let registry = ToolRegistry {
+    ToolRegistry.defaultTools
+}
+```
+
+You can also mix defaults with custom tools:
+
+```swift
+let registry = ToolRegistry {
+    ToolRegistry.defaultTools
+    MyCustomTool()
+}
+```
+
+### HTTP Tools
+
+Built-in tools for making HTTP requests are available by default:
+
+```swift
+let client = ClaudeClient(options: .init(apiKey: apiKey))
+
+// Fetch web content
+for await message in client.query("Fetch the contents of https://example.com") {
+    // Claude will use Fetch tool to make HTTP GET request
+}
+
+// Fetch with custom headers
+for await message in client.query("Fetch https://api.github.com/users/octocat with User-Agent header 'MyApp/1.0'") {
+    // Claude will use Fetch tool with custom headers
+}
+```
+
+**Available HTTP tools:**
+- `Fetch` - Fetch content from URLs via HTTP GET requests with optional custom headers and timeout
+
+The Fetch tool is executed locally and is registered in the shared `ToolRegistry` by default.
+
 ## Running the CLI
 
-The CLI supports .env files for convenience:
+The CLI will prompt for your API key on first run and store it securely:
 
 ```bash
-# 1. Set up .env file (CLI only)
-cp .env.example .env
-# Edit .env and add your API key
-
-# 2. Run the CLI
+# Run the CLI - it will prompt for your API key if not found
 swift run swift-claude "What is 2 + 2?"
 
 # Or use interactive mode
 swift run swift-claude -i
+```
+
+Your API key will be stored in `~/.swift-claude/anthropic-api-key` with restricted permissions (0600).
+
+Alternatively, you can set the `ANTHROPIC_API_KEY` environment variable:
+```bash
+export ANTHROPIC_API_KEY='your-api-key-here'
+swift run swift-claude "What is 2 + 2?"
 ```
 
 ## Running Examples

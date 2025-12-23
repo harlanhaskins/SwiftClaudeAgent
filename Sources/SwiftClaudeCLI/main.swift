@@ -34,9 +34,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Run in interactive mode (REPL)")
     var interactive = false
 
-    @Option(name: .shortAndLong, help: "Comma-separated list of allowed tools (default: all built-in tools)")
-    var tools: String = "Read,Write,Bash,Glob,Grep,List,web_search"
-
     @Option(name: .shortAndLong, help: "Permission mode: manual, accept-edits, accept-all (default: accept-all)")
     var permission: String = "accept-all"
 
@@ -47,9 +44,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     var prompt: [String] = []
 
     mutating func run() async throws {
-        // Parse allowed tools
-        let allowedTools: [String] = tools.split(separator: ",").map { String($0) }
-
         // Parse permission mode
         let permissionMode: PermissionMode
         switch permission.lowercased() {
@@ -73,13 +67,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Load API key
         guard let apiKey = loadAPIKey() else {
-            throw ValidationError("API key not found. Set ANTHROPIC_API_KEY environment variable or create a .env file.")
+            throw ValidationError("API key not found. Please run the CLI to be prompted for your API key.")
         }
 
-        // Create options
+        // Create options (all built-in tools are registered by default in shared registry)
         let workingDir = workingDirectory.map { URL(fileURLWithPath: $0) }
         let options = ClaudeAgentOptions(
-            allowedTools: allowedTools,
             permissionMode: permissionMode,
             apiKey: apiKey,
             workingDirectory: workingDir
@@ -248,38 +241,49 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func loadAPIKey() -> String? {
-        // Try environment variable first
-        if let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] {
-            return envKey
+        // Check stored API key
+        let configDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".swift-claude")
+        let keyPath = configDir.appendingPathComponent("anthropic-api-key")
+
+        // Try to read existing key
+        if FileManager.default.fileExists(atPath: keyPath.path),
+           let apiKey = try? String(contentsOf: keyPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           !apiKey.isEmpty {
+            return apiKey
         }
 
-        // Try .env file
-        let envPath = ".env"
-        guard FileManager.default.fileExists(atPath: envPath) else {
+        // No key found - prompt user
+        print("\(ANSIColor.yellow.rawValue)No API key found.\(ANSIColor.reset.rawValue)")
+        print("Please enter your Anthropic API key (it will be stored in \(keyPath.path)):")
+        print("\(ANSIColor.gray.rawValue)Get your key from: https://console.anthropic.com/settings/keys\(ANSIColor.reset.rawValue)")
+        print()
+
+        guard let apiKey = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), !apiKey.isEmpty else {
+            print("\(ANSIColor.red.rawValue)No API key provided.\(ANSIColor.reset.rawValue)")
             return nil
         }
 
-        guard let content = try? String(contentsOfFile: envPath, encoding: .utf8) else {
-            return nil
+        // Create config directory if it doesn't exist
+        do {
+            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+
+            // Save the API key
+            try apiKey.write(to: keyPath, atomically: true, encoding: .utf8)
+
+            // Set file permissions to be readable only by user (0600)
+            #if os(Linux) || os(macOS)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: keyPath.path
+            )
+            #endif
+
+            print("\(ANSIColor.green.rawValue)✓ API key saved to \(keyPath.path)\(ANSIColor.reset.rawValue)\n")
+            return apiKey
+        } catch {
+            print("\(ANSIColor.red.rawValue)Failed to save API key: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
+            return apiKey // Still return it for this session
         }
-
-        for line in content.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("#") || trimmed.isEmpty {
-                continue
-            }
-
-            let parts = trimmed.split(separator: "=", maxSplits: 1)
-            if parts.count == 2 {
-                let key = parts[0].trimmingCharacters(in: .whitespaces)
-                let value = parts[1].trimmingCharacters(in: .whitespaces)
-
-                if key == "ANTHROPIC_API_KEY" {
-                    return value
-                }
-            }
-        }
-
-        return nil
     }
 }

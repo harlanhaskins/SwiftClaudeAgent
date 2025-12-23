@@ -23,6 +23,10 @@ public struct ListTool: Tool {
         ListToolInput.schema
     }
 
+    public var permissionCategories: ToolPermissionCategory {
+        [.read]
+    }
+
     public init() {}
 
     public func execute(input: ListToolInput) async throws -> ToolResult {

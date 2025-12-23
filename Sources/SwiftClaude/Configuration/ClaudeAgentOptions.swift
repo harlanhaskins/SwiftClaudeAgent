@@ -4,7 +4,6 @@ import Foundation
 
 public struct ClaudeAgentOptions: Sendable {
     public let systemPrompt: String?
-    public let allowedTools: [String]
     public let maxTurns: Int?
     public let permissionMode: PermissionMode
     public let apiKey: String
@@ -13,7 +12,6 @@ public struct ClaudeAgentOptions: Sendable {
 
     public init(
         systemPrompt: String? = nil,
-        allowedTools: [String] = ["Read", "Write", "Bash", "Glob", "Grep", "List", "web_search"],
         maxTurns: Int? = nil,
         permissionMode: PermissionMode = .manual,
         apiKey: String,
@@ -21,7 +19,6 @@ public struct ClaudeAgentOptions: Sendable {
         workingDirectory: URL? = nil
     ) {
         self.systemPrompt = systemPrompt
-        self.allowedTools = allowedTools
         self.maxTurns = maxTurns
         self.permissionMode = permissionMode
         self.apiKey = apiKey
@@ -41,25 +38,32 @@ public enum PermissionMode: Sendable {
     /// Require manual approval for each tool use (safest)
     case manual
 
-    /// Automatically accept file read/write operations (Read, Write, Edit, Glob, Grep, List)
+    /// Automatically accept read-only operations (Read, Glob, Grep, List)
+    case acceptReadOnly
+
+    /// Automatically accept file read/write operations (Read, Write, Glob, Grep, List)
     case acceptEdits
 
     /// Accept all tool uses automatically (use with caution!)
     case acceptAll
 
-    /// Custom permission predicate
-    case custom(@Sendable (String) -> Bool)
+    /// Custom permission predicate based on categories
+    case custom(@Sendable (ToolPermissionCategory) -> Bool)
 
-    public func shouldAllow(tool: String) -> Bool {
+    public func shouldAllow(categories: ToolPermissionCategory) -> Bool {
         switch self {
         case .manual:
             return false
+        case .acceptReadOnly:
+            // Only allow read operations
+            return categories.isSubset(of: [.read])
         case .acceptEdits:
-            return ["Read", "Write", "Edit", "Glob", "Grep", "List"].contains(tool)
+            // Allow read and write operations, but not execute or network
+            return categories.isSubset(of: [.read, .write])
         case .acceptAll:
             return true
         case .custom(let predicate):
-            return predicate(tool)
+            return predicate(categories)
         }
     }
 }
@@ -68,6 +72,8 @@ extension PermissionMode: Equatable {
     public static func == (lhs: PermissionMode, rhs: PermissionMode) -> Bool {
         switch (lhs, rhs) {
         case (.manual, .manual):
+            return true
+        case (.acceptReadOnly, .acceptReadOnly):
             return true
         case (.acceptEdits, .acceptEdits):
             return true

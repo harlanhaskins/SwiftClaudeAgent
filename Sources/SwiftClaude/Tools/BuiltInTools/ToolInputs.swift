@@ -193,3 +193,39 @@ public struct ListToolInput: Codable, Sendable, Equatable {
         )
     }
 }
+
+// MARK: - Fetch Tool Input
+
+public struct FetchToolInput: Codable, Sendable, Equatable {
+    public let url: String
+    public let headers: [String: String]?
+    public let timeout: Int?
+
+    public init(url: String, headers: [String: String]? = nil, timeout: Int? = nil) {
+        self.url = url
+        self.headers = headers
+        self.timeout = timeout
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case headers
+        case timeout
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "url": .string(description: "URL to fetch (HTTP/HTTPS)"),
+                "headers": .object(
+                    properties: [:],
+                    required: [],
+                    description: "Optional HTTP headers as key-value pairs"
+                ),
+                "timeout": .integer(description: "Timeout in milliseconds (default: 30000, max: 120000)")
+            ],
+            required: ["url"]
+        )
+    }
+}

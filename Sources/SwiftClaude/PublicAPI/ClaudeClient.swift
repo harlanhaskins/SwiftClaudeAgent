@@ -8,7 +8,6 @@ import Foundation
 /// # Example
 /// ```swift
 /// let client = ClaudeClient(options: .init(
-///     allowedTools: ["Read", "Write"],
 ///     apiKey: "your-api-key"
 /// ))
 ///
@@ -59,7 +58,6 @@ public actor ClaudeClient {
 
         self.toolExecutor = ToolExecutor(
             registry: toolRegistry,
-            allowedTools: options.allowedTools,
             permissionMode: options.permissionMode
         )
     }
@@ -80,7 +78,6 @@ public actor ClaudeClient {
 
         self.toolExecutor = ToolExecutor(
             registry: toolRegistry,
-            allowedTools: options.allowedTools,
             permissionMode: options.permissionMode
         )
     }
@@ -122,8 +119,8 @@ public actor ClaudeClient {
         turnCount = 0
     }
 
-    /// Get current conversation history.
-    public func getHistory() -> [Message] {
+    /// Current conversation history
+    public var history: [Message] {
         conversationHistory
     }
 
@@ -227,8 +224,9 @@ public actor ClaudeClient {
             let userMessage = Message.user(UserMessage(content: prompt))
             conversationHistory.append(userMessage)
 
-            // Get tool definitions if tools are enabled
-            let tools: [AnthropicTool]? = options.allowedTools.isEmpty ? nil : await toolExecutor.getAnthropicTools()
+            // Get tool definitions from registry
+            let allTools = await toolExecutor.anthropicTools()
+            let tools: [AnthropicTool]? = allTools.isEmpty ? nil : allTools
 
             // Execute conversation loop until no more tool uses
             var continueLoop = true
