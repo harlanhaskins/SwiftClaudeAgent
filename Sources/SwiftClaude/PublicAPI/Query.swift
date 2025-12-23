@@ -28,7 +28,7 @@ public func query(
         let task = Task {
             do {
                 // Create client for this query
-                let client = ClaudeClient(options: options ?? .default)
+                let client = try await ClaudeClient(options: options ?? .default)
 
                 // Check for cancellation before starting
                 try Task.checkCancellation()

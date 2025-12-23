@@ -61,16 +61,28 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             workingDirectory: workingDir
         )
 
+        // Load MCP configuration if available
+        let mcpManager = try? MCPManager.loadDefault()
+        if mcpManager != nil {
+            print("\(ANSIColor.green.rawValue)✓ MCP configuration loaded\(ANSIColor.reset.rawValue)")
+        }
+
         // Run in appropriate mode
         if interactive {
-            await runInteractive(initialPrompt: promptString.isEmpty ? nil : promptString, options: options)
+            await runInteractive(initialPrompt: promptString.isEmpty ? nil : promptString, options: options, mcpManager: mcpManager)
         } else {
-            await runSingleShot(prompt: promptString, options: options)
+            await runSingleShot(prompt: promptString, options: options, mcpManager: mcpManager)
         }
     }
 
-    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions) async {
-        let client = ClaudeClient(options: options)
+    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+        let client: ClaudeClient
+        do {
+            client = try await ClaudeClient(options: options, mcpManager: mcpManager)
+        } catch {
+            print("\(ANSIColor.red.rawValue)Error initializing client: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
+            return
+        }
 
         // Add hook to show ALL tool usage (including built-in tools like web_search)
         await client.addHook(.onMessage) { (context: MessageContext) in
@@ -115,8 +127,14 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func runSingleShot(prompt: String, options: ClaudeAgentOptions) async {
-        let client = ClaudeClient(options: options)
+    func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+        let client: ClaudeClient
+        do {
+            client = try await ClaudeClient(options: options, mcpManager: mcpManager)
+        } catch {
+            print("\(ANSIColor.red.rawValue)Error initializing client: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
+            return
+        }
 
         // Add hook to show ALL tool usage (including built-in tools like web_search)
         await client.addHook(.onMessage) { (context: MessageContext) in

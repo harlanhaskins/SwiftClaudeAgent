@@ -144,8 +144,9 @@ public final class Tools: Sendable {
         self.tools = toolsDict
     }
 
-    /// Internal initializer for use by factory methods
-    private init(toolsDict: [String: any Tool]) {
+    /// Initialize with a dictionary of tools
+    /// - Parameter toolsDict: Dictionary mapping tool names to tool instances
+    public init(toolsDict: [String: any Tool]) {
         self.tools = toolsDict
     }
 

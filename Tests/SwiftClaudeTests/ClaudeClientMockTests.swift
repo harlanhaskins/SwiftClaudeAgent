@@ -8,7 +8,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.addTextResponse("Hello from Claude!")
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         var receivedMessage = false
 
@@ -30,7 +30,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.addTextResponse("Response 2")
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         // First query
         for await _ in await client.query("Query 1") {}
@@ -68,7 +68,7 @@ final class ClaudeClientMockTests: XCTestCase {
             maxTurns: 2,
             apiKey: "test-key"
         )
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         // First two queries should succeed
         for await _ in await client.query("Query 1") {}
@@ -88,7 +88,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.addTextResponse("Response")
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         // Make a query
         for await _ in await client.query("Test") {}
@@ -113,7 +113,7 @@ final class ClaudeClientMockTests: XCTestCase {
             systemPrompt: "You are a test assistant",
             apiKey: "test-key"
         )
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         for await _ in await client.query("Test") {}
 
@@ -141,7 +141,7 @@ final class ClaudeClientMockTests: XCTestCase {
         }
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         // Run multiple queries concurrently
         await withTaskGroup(of: Void.self) { group in
@@ -168,7 +168,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.addTextResponse("Response", delay: .seconds(1))
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         let task = Task {
             for await _ in await client.query("Test") {
@@ -189,7 +189,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.setErrorMode(shouldThrow: true, error: MockError.simulatedError)
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         var receivedMessage = false
         for await _ in await client.query("Test") {
@@ -209,7 +209,7 @@ final class ClaudeClientMockTests: XCTestCase {
         }
 
         let options = ClaudeAgentOptions(apiKey: "test-key")
-        let client = ClaudeClient(options: options, apiClient: mock)
+        let client = try await ClaudeClient(options: options, apiClient: mock)
 
         var parts: [String] = []
 
