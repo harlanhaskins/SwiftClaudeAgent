@@ -58,7 +58,9 @@ public struct ReadTool: Tool {
         // Format output with line numbers (like cat -n)
         let numberedLines = selectedLines.enumerated().map { index, line in
             let lineNumber = startLine + index + 1  // 1-based line numbers
-            return String(format: "%6d\t%@", lineNumber, line)
+            let paddedNumber = lineNumber.formatted(.number.grouping(.never))
+                .padding(toLength: 6, withPad: " ", startingAt: 0)
+            return "\(paddedNumber)\t\(line)"
         }.joined(separator: "\n")
 
         return ToolResult(content: numberedLines)

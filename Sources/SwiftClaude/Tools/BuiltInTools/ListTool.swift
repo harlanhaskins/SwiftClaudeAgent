@@ -156,19 +156,7 @@ public struct ListTool: Tool {
     }
 
     private func formatFileSize(_ bytes: Int) -> String {
-        let kb = Double(bytes) / 1024.0
-        let mb = kb / 1024.0
-        let gb = mb / 1024.0
-
-        if gb >= 1 {
-            return String(format: "%.1f GB", gb)
-        } else if mb >= 1 {
-            return String(format: "%.1f MB", mb)
-        } else if kb >= 1 {
-            return String(format: "%.1f KB", kb)
-        } else {
-            return "\(bytes) B"
-        }
+        return bytes.formatted(.byteCount(style: .file))
     }
 }
 
