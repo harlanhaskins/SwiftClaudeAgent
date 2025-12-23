@@ -54,10 +54,8 @@ public actor ToolRegistry {
 
             // Register Anthropic built-in tools (executed server-side)
             let webSearchTool = WebSearchTool()
-            let webFetchTool = WebFetchTool()
 
             tools[webSearchTool.name] = webSearchTool
-            tools[webFetchTool.name] = webFetchTool
         }
     }
 
@@ -210,8 +208,7 @@ extension ToolRegistry {
             GlobTool(),
             GrepTool(),
             ListTool(),
-            WebSearchTool(),
-            WebFetchTool()
+            WebSearchTool()
         ]
 
         Task {

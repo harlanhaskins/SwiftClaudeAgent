@@ -14,7 +14,7 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Direct API Integration** - Communicates directly with Anthropic API
 - ✅ **Environment Config** - Load API keys from .env files
 - ✅ **Tools Support** - Built-in Read, Write, Bash, Glob, Grep, and List tools with typed inputs
-- ✅ **Web Tools** - Built-in web search and fetch via Claude API
+- ✅ **Web Search** - Built-in web search via Claude API
 - ✅ **Hooks System** - Lifecycle hooks for logging, permissions, and observability
 - ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
 - 🚧 **MCP Integration** - Coming soon (custom tool servers)
@@ -266,33 +266,28 @@ await client.addHook(.onError) { (context: ErrorContext) in
 - `afterToolExecution` - After a tool completes
 - `onMessage` - When each message is received during streaming
 
-### Web Search and Fetch
+### Web Search
 
-Enable Claude's built-in web search and fetch capabilities by including them in `allowedTools`:
+Enable Claude's built-in web search capability by including it in `allowedTools`:
 
 ```swift
 let options = ClaudeAgentOptions(
     apiKey: apiKey,
-    allowedTools: ["WebSearch", "WebFetch"]  // Add built-in web tools
+    allowedTools: ["WebSearch"]  // Add built-in web search tool
 )
 
 let client = ClaudeClient(options: options)
 
-// Claude can now search the web and fetch URLs
+// Claude can now search the web
 for await message in client.query("What's the latest news about Swift 6?") {
     // Claude will use web_search to find current information
 }
-
-for await message in client.query("Summarize the content at https://swift.org") {
-    // Claude will use web_fetch to read the page
-}
 ```
 
-**Built-in web tools:**
-- `WebSearch` - Search the web for current information (powered by Anthropic)
-- `WebFetch` - Fetch and read content from URLs (powered by Anthropic)
+**Built-in web tool:**
+- `WebSearch` - Search the web for current information (powered by Anthropic, executed server-side)
 
-These tools are executed server-side by Anthropic, not locally. They're registered in the shared `ToolRegistry` by default along with Read, Write, and Bash.
+This tool is executed server-side by Anthropic, not locally. It's registered in the shared `ToolRegistry` by default.
 
 ### File Operation Tools
 
@@ -463,7 +458,7 @@ do {
 - [x] ToolRegistry for tool management
 - [x] Hooks system for lifecycle events
 - [x] Built-in tool protocol for server-side tools
-- [x] Web search and fetch integration
+- [x] Web search integration
 
 ### Phase 3: MCP Integration
 - [ ] In-process MCP servers

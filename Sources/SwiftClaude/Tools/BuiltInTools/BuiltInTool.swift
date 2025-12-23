@@ -26,7 +26,7 @@ public struct WebSearchTool: BuiltInTool {
 
     public var name: String { "WebSearch" }
     public var description: String { "Search the web for current information" }
-    public var anthropicType: String { "web_search_20250314" }
+    public var anthropicType: String { "web_search_20250305" }
 
     public var inputSchema: JSONSchema {
         // Built-in tools don't need input schema - Anthropic handles it
@@ -38,29 +38,5 @@ public struct WebSearchTool: BuiltInTool {
     public func execute(input: EmptyInput) async throws -> ToolResult {
         // Built-in tools are executed by Anthropic, not locally
         throw ToolError.executionFailed("WebSearch is a built-in tool executed by Anthropic")
-    }
-}
-
-// MARK: - Web Fetch Tool
-
-/// Built-in tool for fetching web page content
-/// This tool is executed by Anthropic's servers
-public struct WebFetchTool: BuiltInTool {
-    public typealias Input = EmptyInput
-
-    public var name: String { "WebFetch" }
-    public var description: String { "Fetch and read content from a URL" }
-    public var anthropicType: String { "web_fetch_20250314" }
-
-    public var inputSchema: JSONSchema {
-        // Built-in tools don't need input schema - Anthropic handles it
-        .object(properties: [:], required: [])
-    }
-
-    public init() {}
-
-    public func execute(input: EmptyInput) async throws -> ToolResult {
-        // Built-in tools are executed by Anthropic, not locally
-        throw ToolError.executionFailed("WebFetch is a built-in tool executed by Anthropic")
     }
 }

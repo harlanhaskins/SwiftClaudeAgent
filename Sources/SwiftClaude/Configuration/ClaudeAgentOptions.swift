@@ -13,7 +13,7 @@ public struct ClaudeAgentOptions: Sendable {
 
     public init(
         systemPrompt: String? = nil,
-        allowedTools: [String] = [],
+        allowedTools: [String] = ["Read", "Write", "Bash", "Glob", "Grep", "List", "WebSearch"],
         maxTurns: Int? = nil,
         permissionMode: PermissionMode = .manual,
         apiKey: String,
@@ -41,7 +41,7 @@ public enum PermissionMode: Sendable {
     /// Require manual approval for each tool use (safest)
     case manual
 
-    /// Automatically accept file read/write operations (Read, Write, Edit, Glob, Grep)
+    /// Automatically accept file read/write operations (Read, Write, Edit, Glob, Grep, List)
     case acceptEdits
 
     /// Accept all tool uses automatically (use with caution!)
@@ -55,7 +55,7 @@ public enum PermissionMode: Sendable {
         case .manual:
             return false
         case .acceptEdits:
-            return ["Read", "Write", "Edit", "Glob", "Grep"].contains(tool)
+            return ["Read", "Write", "Edit", "Glob", "Grep", "List"].contains(tool)
         case .acceptAll:
             return true
         case .custom(let predicate):
