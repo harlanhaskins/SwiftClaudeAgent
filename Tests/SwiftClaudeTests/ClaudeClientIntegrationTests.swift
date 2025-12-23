@@ -134,14 +134,14 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         for await _ in await client.query("My name is Bob") {}
 
         // Check history exists
-        var history = await client.getHistory()
+        var history = await client.history
         XCTAssertFalse(history.isEmpty)
 
         // Clear history
         await client.clearHistory()
 
         // Check history is empty
-        history = await client.getHistory()
+        history = await client.history
         XCTAssertTrue(history.isEmpty)
 
         // New query shouldn't remember the name

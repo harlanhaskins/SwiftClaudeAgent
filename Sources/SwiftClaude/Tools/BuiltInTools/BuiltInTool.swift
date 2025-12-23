@@ -39,10 +39,6 @@ public struct WebSearchTool: BuiltInTool {
         .object(properties: [:], required: [])
     }
 
-    public var permissionCategories: ToolPermissionCategory {
-        [.network]
-    }
-
     public init() {}
 
     public func execute(input: EmptyInput) async throws -> ToolResult {

@@ -39,7 +39,7 @@ final class ClaudeClientMockTests: XCTestCase {
         for await _ in await client.query("Query 2") {}
 
         // Check history
-        let history = await client.getHistory()
+        let history = await client.history
 
         XCTAssertEqual(history.count, 4) // 2 user + 2 assistant messages
 
@@ -94,14 +94,14 @@ final class ClaudeClientMockTests: XCTestCase {
         for await _ in await client.query("Test") {}
 
         // Verify history exists
-        var history = await client.getHistory()
+        var history = await client.history
         XCTAssertFalse(history.isEmpty)
 
         // Clear history
         await client.clearHistory()
 
         // Verify history is empty
-        history = await client.getHistory()
+        history = await client.history
         XCTAssertTrue(history.isEmpty)
     }
 
@@ -159,7 +159,7 @@ final class ClaudeClientMockTests: XCTestCase {
         }
 
         // All queries should have completed
-        let history = await client.getHistory()
+        let history = await client.history
         XCTAssertEqual(history.count, 10) // 5 user + 5 assistant
     }
 

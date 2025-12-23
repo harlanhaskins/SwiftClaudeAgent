@@ -27,10 +27,6 @@ public struct FetchTool: Tool {
         FetchToolInput.schema
     }
 
-    public var permissionCategories: ToolPermissionCategory {
-        [.network]
-    }
-
     public init() {}
 
     public func execute(input: FetchToolInput) async throws -> ToolResult {

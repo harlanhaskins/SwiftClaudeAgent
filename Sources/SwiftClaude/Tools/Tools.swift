@@ -2,13 +2,13 @@ import Foundation
 
 // MARK: - Tool Registry Builder
 
-/// Result builder for declaratively constructing tool registries.
+/// Result builder for declaratively constructing tool sets.
 ///
 /// Supports conditional registration with if statements and loops.
 ///
 /// # Example
 /// ```swift
-/// let registry = ToolRegistry {
+/// let tools = Tools {
 ///     ReadTool()
 ///     WriteTool()
 ///     if needsBash {
@@ -22,7 +22,7 @@ import Foundation
 /// }
 /// ```
 @resultBuilder
-public struct ToolRegistryBuilder {
+public struct ToolsBuilder {
     public static func buildBlock(_ tools: any Tool...) -> [any Tool] {
         Array(tools)
     }
@@ -52,44 +52,44 @@ public struct ToolRegistryBuilder {
     }
 }
 
-// MARK: - Tool Registry
+// MARK: - Tools
 
-/// Centralized registry for all available tools.
+/// Immutable, thread-safe registry for tools.
 ///
-/// The ToolRegistry maintains a single source of truth for all tools in the system,
-/// both built-in and custom. This makes it easy to query available tools, get tool
-/// definitions for the API, and execute tools by name.
+/// Tools maintains all available tools in the system, both built-in and custom.
+/// It's immutable after initialization, making it simple and safe to use from any thread.
 ///
 /// # Example
 /// ```swift
-/// let registry = ToolRegistry.shared
-///
-/// // Register a custom tool
-/// await registry.register(MyCustomTool())
+/// let tools = Tools.shared
 ///
 /// // Get all tool definitions for API
-/// let definitions = await registry.getToolDefinitions()
+/// let definitions = tools.anthropicTools()
 ///
 /// // Execute a tool by name
-/// if let tool = await registry.getTool(named: "Read") {
-///     let result = try await tool.execute(input: input)
-/// }
+/// let result = try await tools.execute(
+///     toolName: "Read",
+///     toolUseId: "toolu_123",
+///     inputData: jsonData
+/// )
 /// ```
-public actor ToolRegistry {
+public final class Tools: Sendable {
     // MARK: - Singleton
 
-    /// Shared global registry with all built-in tools pre-registered
-    public static let shared = ToolRegistry()
+    /// Shared global instance with all built-in tools pre-registered
+    public static let shared = Tools()
 
     // MARK: - Properties
 
-    private var tools: [String: any Tool] = [:]
+    private let tools: [String: any Tool]
 
     // MARK: - Initialization
 
-    /// Initialize a new registry
+    /// Initialize with built-in tools
     /// - Parameter registerBuiltIns: Whether to register built-in tools (default: true)
     public init(registerBuiltIns: Bool = true, workingDirectory: URL? = nil) {
+        var toolsDict: [String: any Tool] = [:]
+
         if registerBuiltIns {
             // Register custom built-in tools (executed locally)
             let readTool = ReadTool()
@@ -100,29 +100,30 @@ public actor ToolRegistry {
             let listTool = ListTool()
             let fetchTool = FetchTool()
 
-            tools[readTool.name] = readTool
-            tools[writeTool.name] = writeTool
-            tools[bashTool.name] = bashTool
-            tools[globTool.name] = globTool
-            tools[grepTool.name] = grepTool
-            tools[listTool.name] = listTool
-            tools[fetchTool.name] = fetchTool
+            toolsDict[readTool.name] = readTool
+            toolsDict[writeTool.name] = writeTool
+            toolsDict[bashTool.name] = bashTool
+            toolsDict[globTool.name] = globTool
+            toolsDict[grepTool.name] = grepTool
+            toolsDict[listTool.name] = listTool
+            toolsDict[fetchTool.name] = fetchTool
 
             // Register Anthropic built-in tools (executed server-side)
             let webSearchTool = WebSearchTool()
-
-            tools[webSearchTool.name] = webSearchTool
+            toolsDict[webSearchTool.name] = webSearchTool
         }
+
+        self.tools = toolsDict
     }
 
-    /// Initialize a registry with tools using a result builder.
+    /// Initialize with tools using a result builder.
     ///
-    /// This provides a declarative, type-safe way to construct a registry with specific tools.
+    /// This provides a declarative, type-safe way to construct a tools instance.
     /// Supports conditional registration with if statements and loops.
     ///
     /// # Example
     /// ```swift
-    /// let registry = ToolRegistry {
+    /// let tools = Tools {
     ///     ReadTool()
     ///     WriteTool()
     ///     if needsBash {
@@ -134,38 +135,18 @@ public actor ToolRegistry {
     ///     }
     /// }
     /// ```
-    public init(@ToolRegistryBuilder _ buildTools: () -> [any Tool]) {
+    public init(@ToolsBuilder _ buildTools: () -> [any Tool]) {
+        var toolsDict: [String: any Tool] = [:]
         let toolList = buildTools()
         for tool in toolList {
-            tools[tool.name] = tool
+            toolsDict[tool.name] = tool
         }
+        self.tools = toolsDict
     }
 
-    // MARK: - Registration
-
-    /// Register a tool in the registry
-    /// - Parameter tool: The tool to register
-    public func register(_ tool: any Tool) {
-        tools[tool.name] = tool
-    }
-
-    /// Register multiple tools
-    /// - Parameter tools: Array of tools to register
-    public func register(_ tools: [any Tool]) {
-        for tool in tools {
-            self.tools[tool.name] = tool
-        }
-    }
-
-    /// Unregister a tool by name
-    /// - Parameter name: Name of the tool to remove
-    public func unregister(_ name: String) {
-        tools.removeValue(forKey: name)
-    }
-
-    /// Clear all registered tools
-    public func clearAll() {
-        tools.removeAll()
+    /// Internal initializer for use by factory methods
+    private init(toolsDict: [String: any Tool]) {
+        self.tools = toolsDict
     }
 
     // MARK: - Querying
@@ -179,30 +160,18 @@ public actor ToolRegistry {
 
     /// Check if a tool is registered
     /// - Parameter name: The tool name
-    /// - Returns: True if the tool exists in the registry
+    /// - Returns: True if the tool exists
     public func hasTool(named name: String) -> Bool {
         return tools[name] != nil
     }
 
-    /// Get permission categories for a tool
-    /// - Parameter name: The tool name
-    /// - Returns: The tool's permission categories, or empty if tool not found
-    public func permissionCategories(for name: String) -> ToolPermissionCategory {
-        guard let tool = tools[name] else {
-            return []
-        }
-        return tool.permissionCategories
-    }
-
     /// All registered tool names
-    /// - Returns: Array of tool names
     public var toolNames: [String] {
         return Array(tools.keys).sorted()
     }
 
-    /// Get the count of registered tools
-    /// - Returns: Number of registered tools
-    public func count() -> Int {
+    /// Number of registered tools
+    public var count: Int {
         return tools.count
     }
 
@@ -259,13 +228,14 @@ public actor ToolRegistry {
 
     /// Execute a tool by name with JSON input data
     /// - Parameters:
-    ///   - name: Name of the tool to execute
+    ///   - toolName: Name of the tool to execute
+    ///   - toolUseId: Unique ID for this tool use
     ///   - inputData: JSON-encoded input data
     /// - Returns: The result of the tool execution
     /// - Throws: ToolError if the tool is not found or execution fails
-    public func execute(toolNamed name: String, inputData: Data) async throws -> ToolResult {
-        guard let tool = tools[name] else {
-            throw ToolError.notFound("Tool '\(name)' not found in registry")
+    public func execute(toolName: String, toolUseId: String, inputData: Data) async throws -> ToolResult {
+        guard let tool = tools[toolName] else {
+            throw ToolError.notFound("Tool '\(toolName)' not found")
         }
 
         // Use _openExistential to convert `any Tool` to concrete type
@@ -283,13 +253,13 @@ public actor ToolRegistry {
 
 // MARK: - Built-in Tool Registration
 
-extension ToolRegistry {
+extension Tools {
     /// All default built-in tools with BashTool configured for current working directory.
     ///
     /// Useful for composing with the result builder:
     /// ```swift
-    /// let registry = ToolRegistry {
-    ///     ToolRegistry.defaultTools
+    /// let tools = Tools {
+    ///     Tools.defaultTools
     /// }
     /// ```
     public static var defaultTools: [any Tool] {
@@ -305,14 +275,12 @@ extension ToolRegistry {
         ]
     }
 
-    /// Create a registry with only specific built-in tools
+    /// Create a tools instance with only specific built-in tools
     /// - Parameters:
     ///   - toolNames: Names of built-in tools to include (e.g., ["Read", "Write", "WebSearch"])
     ///   - workingDirectory: Working directory for Bash tool
-    /// - Returns: A new registry with the specified tools
-    public static func withBuiltInTools(_ toolNames: [String], workingDirectory: URL? = nil) -> ToolRegistry {
-        let registry = ToolRegistry(registerBuiltIns: false)
-
+    /// - Returns: A new Tools instance with the specified tools
+    public static func withBuiltInTools(_ toolNames: [String], workingDirectory: URL? = nil) -> Tools {
         // Create tool instances - their names are derived from their types
         let allBuiltInTools: [any Tool] = [
             ReadTool(),
@@ -325,15 +293,16 @@ extension ToolRegistry {
             WebSearchTool()
         ]
 
-        Task {
-            // Register only the tools whose names are in the list
-            for tool in allBuiltInTools {
-                if toolNames.contains(tool.name) {
-                    await registry.register(tool)
-                }
-            }
+        // Filter to only the requested tools
+        let selectedTools = allBuiltInTools.filter { toolNames.contains($0.name) }
+
+        // Create tools dictionary directly
+        var toolsDict: [String: any Tool] = [:]
+        for tool in selectedTools {
+            toolsDict[tool.name] = tool
         }
 
-        return registry
+        // Use the internal constructor
+        return Tools(toolsDict: toolsDict)
     }
 }

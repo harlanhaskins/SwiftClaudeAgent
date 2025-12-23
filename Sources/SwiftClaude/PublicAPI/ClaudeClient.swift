@@ -29,7 +29,7 @@ public actor ClaudeClient {
     private var state: ClientState = .idle
     private var turnCount: Int = 0
     private let apiClient: any APIClient
-    private let toolExecutor: ToolExecutor
+    private let tools: Tools
     private var hooks: [HookType: [HookHandler]] = [:]
 
     // MARK: - State
@@ -42,44 +42,34 @@ public actor ClaudeClient {
 
     // MARK: - Initialization
 
-    public init(options: ClaudeAgentOptions = .default, registry: ToolRegistry? = nil) {
+    public init(options: ClaudeAgentOptions = .default, tools: Tools? = nil) {
         self.options = options
         self.apiClient = AnthropicAPIClient(apiKey: options.apiKey)
 
-        // Create or use provided registry
-        let toolRegistry = registry ?? {
-            // Create a new registry with working directory if specified
+        // Create or use provided tools
+        self.tools = tools ?? {
+            // Create a new tools instance with working directory if specified
             if let workingDir = options.workingDirectory {
-                return ToolRegistry(registerBuiltIns: true, workingDirectory: workingDir)
+                return Tools(registerBuiltIns: true, workingDirectory: workingDir)
             } else {
-                return ToolRegistry.shared
+                return Tools.shared
             }
         }()
-
-        self.toolExecutor = ToolExecutor(
-            registry: toolRegistry,
-            permissionMode: options.permissionMode
-        )
     }
 
     /// Initialize with a custom API client (useful for testing)
-    init(options: ClaudeAgentOptions = .default, apiClient: any APIClient, registry: ToolRegistry? = nil) {
+    init(options: ClaudeAgentOptions = .default, apiClient: any APIClient, tools: Tools? = nil) {
         self.options = options
         self.apiClient = apiClient
 
-        // Create or use provided registry
-        let toolRegistry = registry ?? {
+        // Create or use provided tools
+        self.tools = tools ?? {
             if let workingDir = options.workingDirectory {
-                return ToolRegistry(registerBuiltIns: true, workingDirectory: workingDir)
+                return Tools(registerBuiltIns: true, workingDirectory: workingDir)
             } else {
-                return ToolRegistry.shared
+                return Tools.shared
             }
         }()
-
-        self.toolExecutor = ToolExecutor(
-            registry: toolRegistry,
-            permissionMode: options.permissionMode
-        )
     }
 
     // MARK: - Public API
@@ -96,7 +86,7 @@ public actor ClaudeClient {
 
             // Store task for cancellation
             Task {
-                await self.setState(.active(queryTask))
+                self.setState(.active(queryTask))
             }
 
             continuation.onTermination = { @Sendable _ in
@@ -224,9 +214,9 @@ public actor ClaudeClient {
             let userMessage = Message.user(UserMessage(content: prompt))
             conversationHistory.append(userMessage)
 
-            // Get tool definitions from registry
-            let allTools = await toolExecutor.anthropicTools()
-            let tools: [AnthropicTool]? = allTools.isEmpty ? nil : allTools
+            // Get tool definitions
+            let allTools = tools.anthropicTools()
+            let toolsForAPI: [AnthropicTool]? = allTools.isEmpty ? nil : allTools
 
             // Execute conversation loop until no more tool uses
             var continueLoop = true
@@ -254,7 +244,7 @@ public actor ClaudeClient {
                     messages: messagesToSend,
                     model: options.model,
                     systemPrompt: options.systemPrompt,
-                    tools: tools
+                    tools: toolsForAPI
                 ))
 
                 // Stream response from API
@@ -266,7 +256,7 @@ public actor ClaudeClient {
                     systemPrompt: options.systemPrompt,
                     maxTokens: 4096,
                     temperature: nil,
-                    tools: tools
+                    tools: toolsForAPI
                 ) {
                     try Task.checkCancellation()
 
@@ -360,7 +350,7 @@ public actor ClaudeClient {
         ))
 
         do {
-            let result = try await toolExecutor.execute(
+            let result = try await tools.execute(
                 toolName: toolUse.name,
                 toolUseId: toolUse.id,
                 inputData: toolUse.input.toData()

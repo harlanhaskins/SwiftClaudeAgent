@@ -234,13 +234,18 @@ await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContex
     print("🔧 Executing tool: \(context.toolName)")
 }
 
-// Request permission before sensitive tools
+// Implement permission checking
 await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
-    if context.toolName == "Location" {
-        // Show permission dialog to user
-        let allowed = await requestLocationPermission()
+    // Deny dangerous operations
+    if ["Bash", "Write"].contains(context.toolName) {
+        throw ToolError.permissionDenied("Permission denied for \(context.toolName)")
+    }
+
+    // Or show permission dialog to user
+    if context.toolName == "Fetch" {
+        let allowed = await requestNetworkPermission()
         if !allowed {
-            throw PermissionDeniedError()
+            throw ToolError.permissionDenied("Network access denied")
         }
     }
 }
@@ -262,13 +267,16 @@ await client.addHook(.onError) { (context: ErrorContext) in
 - `beforeRequest` - Before API request is sent
 - `afterResponse` - After response completes (success or error)
 - `onError` - When an error occurs
-- `beforeToolExecution` - Before a tool runs (great for permissions!)
+- `beforeToolExecution` - Before a tool runs (perfect for permission checks!)
 - `afterToolExecution` - After a tool completes
 - `onMessage` - When each message is received during streaming
 
+**Permission Checking:**
+SwiftClaude doesn't enforce permissions - apps implement their own via the `beforeToolExecution` hook. If the hook throws, the tool execution is denied and an error result is sent to Claude.
+
 ### Web Search
 
-Claude's built-in web search capability is available by default when using the shared `ToolRegistry`:
+Claude's built-in web search capability is available by default when using the shared `Tools` instance:
 
 ```swift
 let client = ClaudeClient(options: .init(apiKey: apiKey))
@@ -282,7 +290,7 @@ for await message in client.query("What's the latest news about Swift 6?") {
 **Built-in web tool:**
 - `WebSearch` - Search the web for current information (powered by Anthropic, executed server-side)
 
-This tool is executed server-side by Anthropic, not locally. It's registered in the shared `ToolRegistry` by default.
+This tool is executed server-side by Anthropic, not locally. It's registered in the shared `Tools` instance by default.
 
 ### File Operation Tools
 
@@ -315,15 +323,15 @@ for await message in client.query("What files are in the Sources directory?") {
 - `Grep` - Search file contents with regex patterns
 - `List` - List directory contents with recursive and hidden file options
 
-All file operation tools are executed locally and are registered in the shared `ToolRegistry` by default.
+All file operation tools are executed locally and are registered in the shared `Tools` instance by default.
 
 #### Restricting Available Tools
 
-Use the result builder API to declaratively create a registry with specific tools:
+Use the result builder API to declaratively create a tools instance with specific tools:
 
 ```swift
 // Type-safe tool selection with conditional logic
-let registry = ToolRegistry {
+let tools = Tools {
     ReadTool()
     ListTool()
     GlobTool()
@@ -340,23 +348,23 @@ let registry = ToolRegistry {
 
 let client = ClaudeClient(
     options: .init(apiKey: apiKey),
-    registry: registry
+    tools: tools
 )
 ```
 
 Or use all default tools:
 
 ```swift
-let registry = ToolRegistry {
-    ToolRegistry.defaultTools
+let tools = Tools {
+    Tools.defaultTools
 }
 ```
 
 You can also mix defaults with custom tools:
 
 ```swift
-let registry = ToolRegistry {
-    ToolRegistry.defaultTools
+let tools = Tools {
+    Tools.defaultTools
     MyCustomTool()
 }
 ```
@@ -382,7 +390,7 @@ for await message in client.query("Fetch https://api.github.com/users/octocat wi
 **Available HTTP tools:**
 - `Fetch` - Fetch content from URLs via HTTP GET requests with optional custom headers and timeout
 
-The Fetch tool is executed locally and is registered in the shared `ToolRegistry` by default.
+The Fetch tool is executed locally and is registered in the shared `Tools` instance by default.
 
 ## Running the CLI
 
@@ -447,8 +455,7 @@ swift test
 │  - AnthropicAPIClient (actor)   │
 │  - MessageConverter (actor)     │
 │  - SSEParser (actor)            │
-│  - ToolRegistry (actor)         │
-│  - ToolExecutor (actor)         │
+│  - Tools (class)                │
 └──────────────┬──────────────────┘
                │
 ┌──────────────▼──────────────────┐
@@ -516,7 +523,7 @@ do {
 - [x] Built-in tools (Read, Write, Bash, Glob, Grep, List)
 - [x] Tool execution engine
 - [x] Permission system
-- [x] ToolRegistry for tool management
+- [x] Tools for tool management
 - [x] Hooks system for lifecycle events
 - [x] Built-in tool protocol for server-side tools
 - [x] Web search integration

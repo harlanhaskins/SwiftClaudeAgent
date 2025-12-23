@@ -27,10 +27,6 @@ public struct GrepTool: Tool {
         GrepToolInput.schema
     }
 
-    public var permissionCategories: ToolPermissionCategory {
-        [.read]
-    }
-
     public init() {}
 
     public func execute(input: GrepToolInput) async throws -> ToolResult {

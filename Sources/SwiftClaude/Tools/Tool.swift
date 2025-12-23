@@ -1,29 +1,5 @@
 import Foundation
 
-// MARK: - Tool Permission Category
-
-/// Categories that define what types of operations a tool performs.
-/// Used by permission modes to determine which tools to allow.
-public struct ToolPermissionCategory: OptionSet, Sendable {
-    public let rawValue: Int
-
-    public init(rawValue: Int) {
-        self.rawValue = rawValue
-    }
-
-    /// Read-only operations (files, data, etc.)
-    public static let read = ToolPermissionCategory(rawValue: 1 << 0)
-
-    /// Write operations (creating, modifying files)
-    public static let write = ToolPermissionCategory(rawValue: 1 << 1)
-
-    /// Execute operations (running commands, scripts)
-    public static let execute = ToolPermissionCategory(rawValue: 1 << 2)
-
-    /// Network operations (HTTP requests, API calls, server-side operations)
-    public static let network = ToolPermissionCategory(rawValue: 1 << 3)
-}
-
 // MARK: - Tool Protocol
 
 /// Protocol for executable tools that Claude can use.
@@ -92,9 +68,6 @@ public protocol Tool: Sendable {
 
     /// JSON schema defining the input parameters this tool accepts
     var inputSchema: JSONSchema { get }
-
-    /// Permission categories this tool belongs to (e.g., read, write, execute, network)
-    var permissionCategories: ToolPermissionCategory { get }
 
     /// Execute the tool with the given input
     /// - Parameter input: The strongly-typed input parameters for this tool execution

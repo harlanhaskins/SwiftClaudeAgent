@@ -34,9 +34,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Run in interactive mode (REPL)")
     var interactive = false
 
-    @Option(name: .shortAndLong, help: "Permission mode: manual, accept-edits, accept-all (default: accept-all)")
-    var permission: String = "accept-all"
-
     @Option(name: .shortAndLong, help: "Working directory for Bash tool")
     var workingDirectory: String?
 
@@ -44,19 +41,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     var prompt: [String] = []
 
     mutating func run() async throws {
-        // Parse permission mode
-        let permissionMode: PermissionMode
-        switch permission.lowercased() {
-        case "manual":
-            permissionMode = .manual
-        case "accept-edits":
-            permissionMode = .acceptEdits
-        case "accept-all":
-            permissionMode = .acceptAll
-        default:
-            throw ValidationError("Invalid permission mode: \(permission)")
-        }
-
         // Get prompt string
         let promptString = prompt.joined(separator: " ")
 
@@ -73,7 +57,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         // Create options (all built-in tools are registered by default in shared registry)
         let workingDir = workingDirectory.map { URL(fileURLWithPath: $0) }
         let options = ClaudeAgentOptions(
-            permissionMode: permissionMode,
             apiKey: apiKey,
             workingDirectory: workingDir
         )

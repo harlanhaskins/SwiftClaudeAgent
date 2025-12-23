@@ -23,10 +23,6 @@ public struct ReadTool: Tool {
         ReadToolInput.schema
     }
 
-    public var permissionCategories: ToolPermissionCategory {
-        [.read]
-    }
-
     public init() {}
 
     public func execute(input: ReadToolInput) async throws -> ToolResult {

@@ -23,10 +23,6 @@ public struct GlobTool: Tool {
         GlobToolInput.schema
     }
 
-    public var permissionCategories: ToolPermissionCategory {
-        [.read]
-    }
-
     public init() {}
 
     public func execute(input: GlobToolInput) async throws -> ToolResult {
