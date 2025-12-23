@@ -34,8 +34,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Run in interactive mode (REPL)")
     var interactive = false
 
-    @Option(name: .shortAndLong, help: "Comma-separated list of allowed tools (default: Read,Write,Bash)")
-    var tools: String = "Read,Write,Bash"
+    @Option(name: .shortAndLong, help: "Comma-separated list of allowed tools (default: all built-in tools)")
+    var tools: String = "Read,Write,Bash,Glob,Grep,List,web_search"
 
     @Option(name: .shortAndLong, help: "Permission mode: manual, accept-edits, accept-all (default: accept-all)")
     var permission: String = "accept-all"

@@ -13,7 +13,7 @@ public struct ClaudeAgentOptions: Sendable {
 
     public init(
         systemPrompt: String? = nil,
-        allowedTools: [String] = ["Read", "Write", "Bash", "Glob", "Grep", "List", "WebSearch"],
+        allowedTools: [String] = ["Read", "Write", "Bash", "Glob", "Grep", "List", "web_search"],
         maxTurns: Int? = nil,
         permissionMode: PermissionMode = .manual,
         apiKey: String,

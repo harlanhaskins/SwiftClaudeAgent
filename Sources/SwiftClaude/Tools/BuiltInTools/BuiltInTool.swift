@@ -24,7 +24,7 @@ public struct EmptyInput: Codable, Sendable, Equatable {
 public struct WebSearchTool: BuiltInTool {
     public typealias Input = EmptyInput
 
-    public var name: String { "WebSearch" }
+    public var name: String { "web_search" }
     public var description: String { "Search the web for current information" }
     public var anthropicType: String { "web_search_20250305" }
 

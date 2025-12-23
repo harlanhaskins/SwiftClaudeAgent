@@ -32,6 +32,13 @@ actor MessageConverter {
 
             case .result(let resultMsg):
                 // Convert tool result to user message with tool_result content
+                let contentText = resultMsg.content.compactMap { block -> String? in
+                    if case .text(let textBlock) = block {
+                        return textBlock.text
+                    }
+                    return nil
+                }.joined(separator: "\n")
+
                 let block = AnthropicContentBlock(
                     type: "tool_result",
                     text: nil,
@@ -39,12 +46,7 @@ actor MessageConverter {
                     name: nil,
                     input: nil,
                     toolUseId: resultMsg.toolUseId,
-                    content: resultMsg.content.compactMap { block -> String? in
-                        if case .text(let textBlock) = block {
-                            return textBlock.text
-                        }
-                        return nil
-                    }.joined(separator: "\n"),
+                    content: contentText.isEmpty ? nil : .string(contentText),
                     isError: resultMsg.isError
                 )
 
@@ -136,7 +138,7 @@ actor MessageConverter {
         case "tool_result":
             guard let toolUseId = block.toolUseId else { return nil }
 
-            let content: [ContentBlock] = if let text = block.content {
+            let content: [ContentBlock] = if let text = block.content?.asString {
                 [.text(TextBlock(text: text))]
             } else {
                 []

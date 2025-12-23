@@ -22,12 +22,12 @@ struct AnthropicRequest: Codable {
     }
 }
 
-struct AnthropicMessage: Codable {
+struct AnthropicMessage: Codable, Sendable {
     let role: String
     let content: AnthropicContent
 }
 
-enum AnthropicContent: Codable {
+enum AnthropicContent: Codable, Sendable {
     case text(String)
     case blocks([AnthropicContentBlock])
 
@@ -57,14 +57,14 @@ enum AnthropicContent: Codable {
     }
 }
 
-struct AnthropicContentBlock: Codable {
+struct AnthropicContentBlock: Codable, Sendable {
     let type: String
     let text: String?
     let id: String?
     let name: String?
     let input: [String: AnyCodable]?
     let toolUseId: String?
-    let content: String?
+    let content: ToolResultContent?
     let isError: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -76,6 +76,47 @@ struct AnthropicContentBlock: Codable {
         case toolUseId = "tool_use_id"
         case content
         case isError = "is_error"
+    }
+}
+
+// Tool result content can be either a string or an array of content blocks
+enum ToolResultContent: Codable, Sendable {
+    case string(String)
+    case blocks([AnthropicContentBlock])
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let blocks = try? container.decode([AnthropicContentBlock].self) {
+            self = .blocks(blocks)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Content must be string or array of blocks"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let string):
+            try container.encode(string)
+        case .blocks(let blocks):
+            try container.encode(blocks)
+        }
+    }
+
+    var asString: String? {
+        switch self {
+        case .string(let str):
+            return str
+        case .blocks(let blocks):
+            // Extract text from all blocks
+            return blocks.compactMap { $0.text }.joined(separator: "\n")
+        }
     }
 }
 
@@ -104,22 +145,12 @@ public struct AnthropicTool: Codable, Sendable {
         self.type = nil
     }
 
-    /// Initialize a built-in tool (web_search, web_fetch, etc.)
-    public init(type: String) {
-        self.name = nil
+    /// Initialize a built-in tool (web_search, etc.)
+    public init(type: String, name: String) {
+        self.name = name
         self.description = nil
         self.inputSchema = nil
         self.type = type
-    }
-
-    /// Web search tool (built-in by Anthropic)
-    public static var webSearch: AnthropicTool {
-        AnthropicTool(type: "web_search_20250314")
-    }
-
-    /// Web fetch tool (built-in by Anthropic)
-    public static var webFetch: AnthropicTool {
-        AnthropicTool(type: "web_fetch_20250314")
     }
 }
 

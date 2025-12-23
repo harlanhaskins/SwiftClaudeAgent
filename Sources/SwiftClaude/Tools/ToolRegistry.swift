@@ -150,8 +150,8 @@ public actor ToolRegistry {
         return selectedTools.map { tool in
             // Check if this is a built-in tool (executed by Anthropic)
             if let builtInTool = tool as? any BuiltInTool {
-                // Built-in tools use the type field
-                return AnthropicTool(type: builtInTool.anthropicType)
+                // Built-in tools use both type and name fields
+                return AnthropicTool(type: builtInTool.anthropicType, name: tool.name)
             } else {
                 // Custom tools use name/description/schema
                 return AnthropicTool(
