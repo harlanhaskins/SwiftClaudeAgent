@@ -137,7 +137,7 @@ public struct ListTool: Tool {
         var output = "\(entries.count) items:\n\n"
 
         for entry in entries {
-            let type = entry.isDirectory ? "dir" : "file"
+            let type = entry.isDirectory ? "dir " : "file"
             let sizeStr: String
             if let size = entry.size {
                 sizeStr = formatFileSize(size)
@@ -145,7 +145,11 @@ public struct ListTool: Tool {
                 sizeStr = "-"
             }
 
-            output += String(format: "%-8s %10s  %s\n", type, sizeStr, entry.name)
+            // Pad type and size for alignment
+            let typePadded = type.padding(toLength: 8, withPad: " ", startingAt: 0)
+            let sizePadded = sizeStr.padding(toLength: 10, withPad: " ", startingAt: 0)
+
+            output += "\(typePadded) \(sizePadded)  \(entry.name)\n"
         }
 
         return output
