@@ -40,10 +40,13 @@ public struct GrepTool: Tool {
         }
 
         // Create regex for pattern matching
-        let regexOptions: NSRegularExpression.Options = input.ignoreCase == true ? [.caseInsensitive] : []
-        let regex: NSRegularExpression
+        let regex: Regex<Substring>
         do {
-            regex = try NSRegularExpression(pattern: input.pattern, options: regexOptions)
+            if input.ignoreCase == true {
+                regex = try Regex(input.pattern).ignoresCase()
+            } else {
+                regex = try Regex(input.pattern)
+            }
         } catch {
             throw ToolError.invalidInput("Invalid regex pattern: \(error.localizedDescription)")
         }
@@ -62,7 +65,7 @@ public struct GrepTool: Tool {
 
         if isDirectory.boolValue {
             // Search directory
-            results = try searchDirectory(
+            results = try await searchDirectory(
                 url: searchURL,
                 regex: regex,
                 fileRegex: fileRegex,
@@ -70,7 +73,7 @@ public struct GrepTool: Tool {
             )
         } else {
             // Search single file
-            results = try searchFile(url: searchURL, regex: regex, maxResults: maxResults)
+            results = try await searchFile(url: searchURL, regex: regex, maxResults: maxResults)
         }
 
         // Format output
@@ -84,10 +87,10 @@ public struct GrepTool: Tool {
 
     private func searchDirectory(
         url: URL,
-        regex: NSRegularExpression,
+        regex: Regex<Substring>,
         fileRegex: String?,
         maxResults: Int
-    ) throws -> [SearchResult] {
+    ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
 
         let enumerator = FileManager.default.enumerator(
@@ -118,7 +121,7 @@ public struct GrepTool: Tool {
             }
 
             // Search the file
-            let fileResults = try searchFile(
+            let fileResults = try await searchFile(
                 url: fileURL,
                 regex: regex,
                 maxResults: maxResults - results.count
@@ -131,9 +134,9 @@ public struct GrepTool: Tool {
 
     private func searchFile(
         url: URL,
-        regex: NSRegularExpression,
+        regex: Regex<Substring>,
         maxResults: Int
-    ) throws -> [SearchResult] {
+    ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
 
         // Try to read file as text
@@ -142,21 +145,19 @@ public struct GrepTool: Tool {
             return results
         }
 
-        let lines = contents.components(separatedBy: .newlines)
+        let lines = contents.split(separator: "\n", omittingEmptySubsequences: false)
 
-        for (lineNumber, line) in lines.enumerated() {
+        for (index, line) in lines.enumerated() {
             if results.count >= maxResults {
                 break
             }
 
-            let range = NSRange(line.startIndex..., in: line)
-            let matches = regex.matches(in: line, options: [], range: range)
-
-            if !matches.isEmpty {
+            // Check if line contains a match
+            if line.contains(regex) {
                 results.append(SearchResult(
                     filePath: url.path,
-                    lineNumber: lineNumber + 1,  // 1-based
-                    lineContent: line
+                    lineNumber: index + 1,  // 1-based
+                    lineContent: String(line)
                 ))
             }
         }

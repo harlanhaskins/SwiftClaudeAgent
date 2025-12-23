@@ -96,6 +96,22 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions) async {
         let client = ClaudeClient(options: options)
 
+        // Add hook to show ALL tool usage (including built-in tools like web_search)
+        await client.addHook(.onMessage) { (context: MessageContext) in
+            if case .assistant(let msg) = context.message {
+                for block in msg.content {
+                    if case .toolUse(let toolUse) = block {
+                        print("\n\(ANSIColor.yellow.rawValue)🔍 Claude wants to use tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
+                    }
+                }
+            }
+        }
+
+        // Also show when we're executing local tools
+        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+            print("\(ANSIColor.yellow.rawValue)🔧 Executing: \(context.toolName)\(ANSIColor.reset.rawValue)")
+        }
+
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
         print("\(ANSIColor.gray.rawValue)Type 'exit' or 'quit' to end the session\(ANSIColor.reset.rawValue)\n")
 
@@ -125,6 +141,23 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     func runSingleShot(prompt: String, options: ClaudeAgentOptions) async {
         let client = ClaudeClient(options: options)
+
+        // Add hook to show ALL tool usage (including built-in tools like web_search)
+        await client.addHook(.onMessage) { (context: MessageContext) in
+            if case .assistant(let msg) = context.message {
+                for block in msg.content {
+                    if case .toolUse(let toolUse) = block {
+                        print("\n\(ANSIColor.yellow.rawValue)🔍 Claude wants to use tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
+                    }
+                }
+            }
+        }
+
+        // Also show when we're executing local tools
+        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+            print("\(ANSIColor.yellow.rawValue)🔧 Executing: \(context.toolName)\(ANSIColor.reset.rawValue)")
+        }
+
         print("🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
 
         var hasOutput = false
