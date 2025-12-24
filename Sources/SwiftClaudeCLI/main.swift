@@ -59,7 +59,49 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Create options (all built-in tools are registered by default in shared registry)
         let workingDir = workingDirectory.map { URL(fileURLWithPath: $0) }
+
+        // Get current date and user info
+        let currentDate = Date()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .long
+        dateFormatter.timeStyle = .none
+        let dateString = dateFormatter.string(from: currentDate)
+
+        let userName = ProcessInfo.processInfo.environment["USER"]
+            ?? ProcessInfo.processInfo.environment["USERNAME"]
+            ?? "unknown"
+
+        let systemPrompt = """
+        You are running in a command-line interface (CLI) environment. You have access to tools that allow you to interact with the local filesystem and execute commands.
+
+        ## Execution Context
+        - Current date: \(dateString)
+        - User: \(userName)
+        - You are executing on the user's local machine
+        - You have access to the current working directory: \(workingDir?.path ?? FileManager.default.currentDirectoryPath)
+        - File operations will directly modify files on the user's system
+        - Be careful and precise with file modifications
+
+        ## File Modification Guidelines
+        IMPORTANT: When modifying files, ALWAYS prefer using the Update tool to make targeted changes rather than using the Write tool to replace entire file contents.
+
+        - **Use Update tool**: For modifying existing files (changing specific lines, adding/removing sections, etc.)
+        - **Use Write tool**: Only when creating new files or when you genuinely need to replace the entire file
+
+        Benefits of using Update:
+        - More efficient (only sends/processes the changed portions)
+        - Safer (less risk of accidentally losing content)
+        - Clearer to the user what exactly changed
+        - Better for version control (smaller, more focused diffs)
+
+        When you need to modify a file:
+        1. First read the file to understand its current contents
+        2. Use the Update tool to make specific, targeted changes
+        3. Only use Write if you're creating a new file or the changes are so extensive that a full rewrite is clearer
+        """
+
         let options = ClaudeAgentOptions(
+            systemPrompt: systemPrompt,
             apiKey: apiKey,
             workingDirectory: workingDir
         )
