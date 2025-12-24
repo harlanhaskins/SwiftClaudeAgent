@@ -94,6 +94,7 @@ public final class Tools: Sendable {
             // Register custom built-in tools (executed locally)
             let readTool = ReadTool()
             let writeTool = WriteTool()
+            let updateTool = UpdateTool()
             let bashTool = BashTool(workingDirectory: workingDirectory)
             let globTool = GlobTool()
             let grepTool = GrepTool()
@@ -102,6 +103,7 @@ public final class Tools: Sendable {
 
             toolsDict[readTool.name] = readTool
             toolsDict[writeTool.name] = writeTool
+            toolsDict[updateTool.name] = updateTool
             toolsDict[bashTool.name] = bashTool
             toolsDict[globTool.name] = globTool
             toolsDict[grepTool.name] = grepTool
@@ -267,6 +269,7 @@ extension Tools {
         [
             ReadTool(),
             WriteTool(),
+            UpdateTool(),
             BashTool(workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)),
             GlobTool(),
             GrepTool(),
@@ -286,6 +289,7 @@ extension Tools {
         let allBuiltInTools: [any Tool] = [
             ReadTool(),
             WriteTool(),
+            UpdateTool(),
             BashTool(workingDirectory: workingDirectory),
             GlobTool(),
             GrepTool(),

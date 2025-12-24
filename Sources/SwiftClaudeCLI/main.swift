@@ -36,6 +36,9 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     @Option(name: .shortAndLong, help: "Working directory for Bash tool")
     var workingDirectory: String?
+    
+    @Flag(name: .long, help: "Disable file safety checks (allow writes without reads)")
+    var disableFileSafety = false
 
     @Argument(help: "The prompt to send to Claude (optional in interactive mode)")
     var prompt: [String] = []
@@ -84,6 +87,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             return
         }
 
+        // Create file tracker for safety checks
+        let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
+        
+        // Setup file tracking hooks
+        await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
+
         // Add hook to show ALL tool usage (including built-in tools like web_search)
         await client.addHook(.onMessage) { (context: MessageContext) in
             if case .assistant(let msg) = context.message {
@@ -101,6 +110,9 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
 
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
+        if !disableFileSafety {
+            print("\(ANSIColor.gray.rawValue)File safety enabled: Files must be read before modification\(ANSIColor.reset.rawValue)")
+        }
         print("\(ANSIColor.gray.rawValue)Type 'exit' or 'quit' to end the session\(ANSIColor.reset.rawValue)\n")
 
         // Handle initial prompt if provided
@@ -136,6 +148,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             return
         }
 
+        // Create file tracker for safety checks
+        let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
+        
+        // Setup file tracking hooks
+        await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
+
         // Add hook to show ALL tool usage (including built-in tools like web_search)
         await client.addHook(.onMessage) { (context: MessageContext) in
             if case .assistant(let msg) = context.message {
@@ -162,6 +180,48 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         if hasOutput {
             print() // Final newline
+        }
+    }
+    
+    func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
+        // Hook before tool execution to track file operations
+        await client.addHook(.beforeToolExecution) { [fileTracker] (context: BeforeToolExecutionContext) in
+            // Parse the input to extract file paths
+            guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
+                return
+            }
+            
+            // Track file operations based on tool type
+            do {
+                switch context.toolName {
+                case "Read":
+                    // Record that a file is being read
+                    if let filePath = inputDict["file_path"] as? String {
+                        try await fileTracker.recordRead(path: filePath)
+                    }
+                    
+                case "Write":
+                    // Validate and record write operation
+                    if let filePath = inputDict["file_path"] as? String {
+                        try await fileTracker.recordWrite(path: filePath, allowCreate: true)
+                    }
+                    
+                case "Update":
+                    // Validate and record update operation
+                    if let filePath = inputDict["file_path"] as? String {
+                        try await fileTracker.recordUpdate(path: filePath)
+                    }
+                    
+                default:
+                    break
+                }
+            } catch let error as FileTrackerError {
+                // Print warning about file safety violation
+                print("\n\(ANSIColor.red.rawValue)⚠️  File Safety Warning: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
+                print("\(ANSIColor.gray.rawValue)   Use --disable-file-safety to bypass these checks\(ANSIColor.reset.rawValue)")
+                // Re-throw to prevent the tool from executing
+                throw error
+            }
         }
     }
 

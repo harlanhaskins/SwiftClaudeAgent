@@ -80,11 +80,10 @@ public actor MCPClient {
 
     /// Initialize the MCP connection
     private func initialize() async throws {
-        let params = MCPInitializeParams(
-            clientInfo: Implementation(
-                name: "SwiftClaude",
-                version: "1.0.0"
-            )
+        let params = InitializeParams(
+            protocolVersion: "2024-11-05",
+            capabilities: ClientCapabilities(roots: nil, sampling: nil),
+            clientInfo: Implementation(name: "SwiftClaude", version: "1.0.0")
         )
 
         let response = try await sendRequest(

@@ -3,13 +3,14 @@ import Foundation
 // MARK: - JSON-RPC Base Types
 
 /// JSON-RPC 2.0 request
-public struct JSONRPCRequest: Codable, Sendable {
-    public let jsonrpc: String = "2.0"
+public struct JSONRPCRequest<P: Codable>: Codable, Sendable where P: Sendable {
+    public let jsonrpc: String
     public let id: Int
     public let method: String
-    public let params: AnyCodable?
-
-    public init(id: Int, method: String, params: AnyCodable? = nil) {
+    public let params: P
+    
+    public init(jsonrpc: String = "2.0", id: Int, method: String, params: P) {
+        self.jsonrpc = jsonrpc
         self.id = id
         self.method = method
         self.params = params
@@ -32,12 +33,13 @@ public struct JSONRPCError: Codable, Sendable {
 }
 
 /// JSON-RPC 2.0 notification (no response expected)
-public struct JSONRPCNotification: Codable, Sendable {
-    public let jsonrpc: String = "2.0"
+public struct JSONRPCNotification<P: Codable>: Codable, Sendable where P: Sendable {
+    public let jsonrpc: String
     public let method: String
-    public let params: AnyCodable?
-
-    public init(method: String, params: AnyCodable? = nil) {
+    public let params: P
+    
+    public init(jsonrpc: String = "2.0", method: String, params: P) {
+        self.jsonrpc = jsonrpc
         self.method = method
         self.params = params
     }
@@ -46,16 +48,12 @@ public struct JSONRPCNotification: Codable, Sendable {
 // MARK: - MCP Protocol Types
 
 /// MCP initialize request parameters
-public struct MCPInitializeParams: Codable, Sendable {
+public struct InitializeParams: Codable, Sendable {
     public let protocolVersion: String
     public let capabilities: ClientCapabilities
     public let clientInfo: Implementation
-
-    public init(
-        protocolVersion: String = "2025-03-26",
-        capabilities: ClientCapabilities = ClientCapabilities(),
-        clientInfo: Implementation
-    ) {
+    
+    public init(protocolVersion: String, capabilities: ClientCapabilities, clientInfo: Implementation) {
         self.protocolVersion = protocolVersion
         self.capabilities = capabilities
         self.clientInfo = clientInfo
@@ -64,79 +62,131 @@ public struct MCPInitializeParams: Codable, Sendable {
 
 /// Client capabilities
 public struct ClientCapabilities: Codable, Sendable {
-    public let experimental: [String: AnyCodable]?
-    public let sampling: [String: AnyCodable]?
-
-    public init(
-        experimental: [String: AnyCodable]? = nil,
-        sampling: [String: AnyCodable]? = nil
-    ) {
-        self.experimental = experimental
+    public let roots: RootsCapability?
+    public let sampling: SamplingCapability?
+    
+    public init(roots: RootsCapability?, sampling: SamplingCapability?) {
+        self.roots = roots
         self.sampling = sampling
     }
+}
+
+/// Roots capability
+public struct RootsCapability: Codable, Sendable {
+    public let listChanged: Bool?
+    
+    public init(listChanged: Bool? = nil) {
+        self.listChanged = listChanged
+    }
+}
+
+/// Sampling capability
+public struct SamplingCapability: Codable, Sendable {
+    public init() {}
 }
 
 /// Implementation info
 public struct Implementation: Codable, Sendable {
     public let name: String
     public let version: String
-
+    
     public init(name: String, version: String) {
         self.name = name
         self.version = version
     }
 }
 
-/// MCP initialize result
-public struct MCPInitializeResult: Codable, Sendable {
+/// Initialize result
+public struct InitializeResult: Codable, Sendable {
     public let protocolVersion: String
     public let capabilities: ServerCapabilities
     public let serverInfo: Implementation
+    
+    public init(protocolVersion: String, capabilities: ServerCapabilities, serverInfo: Implementation) {
+        self.protocolVersion = protocolVersion
+        self.capabilities = capabilities
+        self.serverInfo = serverInfo
+    }
 }
 
 /// Server capabilities
 public struct ServerCapabilities: Codable, Sendable {
     public let tools: ToolsCapability?
-    public let resources: ResourcesCapability?
     public let prompts: PromptsCapability?
-    public let logging: [String: AnyCodable]?
-    public let experimental: [String: AnyCodable]?
+    public let resources: ResourcesCapability?
+    public let logging: LoggingCapability?
+    
+    public init(
+        tools: ToolsCapability? = nil,
+        prompts: PromptsCapability? = nil,
+        resources: ResourcesCapability? = nil,
+        logging: LoggingCapability? = nil
+    ) {
+        self.tools = tools
+        self.prompts = prompts
+        self.resources = resources
+        self.logging = logging
+    }
 }
 
 /// Tools capability
 public struct ToolsCapability: Codable, Sendable {
     public let listChanged: Bool?
+    
+    public init(listChanged: Bool? = nil) {
+        self.listChanged = listChanged
+    }
+}
+
+/// Prompts capability
+public struct PromptsCapability: Codable, Sendable {
+    public let listChanged: Bool?
+    
+    public init(listChanged: Bool? = nil) {
+        self.listChanged = listChanged
+    }
 }
 
 /// Resources capability
 public struct ResourcesCapability: Codable, Sendable {
     public let subscribe: Bool?
     public let listChanged: Bool?
+    
+    public init(subscribe: Bool? = nil, listChanged: Bool? = nil) {
+        self.subscribe = subscribe
+        self.listChanged = listChanged
+    }
 }
 
-/// Prompts capability
-public struct PromptsCapability: Codable, Sendable {
-    public let listChanged: Bool?
+/// Logging capability
+public struct LoggingCapability: Codable, Sendable {
+    public init() {}
 }
 
-/// MCP tool definition
-public struct MCPToolDefinition: Codable, Sendable {
+// MARK: - Tool Types
+
+/// Tool definition from MCP server
+public struct MCPToolInfo: Codable, Sendable {
     public let name: String
     public let description: String?
     public let inputSchema: JSONSchema
+    
+    public init(name: String, description: String?, inputSchema: JSONSchema) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+    }
 }
 
-/// Tools list result
-public struct MCPToolsListResult: Codable, Sendable {
-    public let tools: [MCPToolDefinition]
-}
+/// Tool definition (alias for backward compatibility)
+public typealias MCPToolDefinition = MCPToolInfo
 
 /// Tool call parameters
 public struct MCPToolCallParams: Codable, Sendable {
     public let name: String
     public let arguments: [String: AnyCodable]?
-
-    public init(name: String, arguments: [String: AnyCodable]? = nil) {
+    
+    public init(name: String, arguments: [String: AnyCodable]?) {
         self.name = name
         self.arguments = arguments
     }
@@ -144,31 +194,38 @@ public struct MCPToolCallParams: Codable, Sendable {
 
 /// Tool call result
 public struct MCPToolCallResult: Codable, Sendable {
-    public let content: [MCPContent]
+    public let content: [Content]
     public let isError: Bool?
+    
+    public init(content: [Content], isError: Bool? = nil) {
+        self.content = content
+        self.isError = isError
+    }
 }
 
-/// MCP content block
-public enum MCPContent: Codable, Sendable {
-    case text(MCPTextContent)
-    case image(MCPImageContent)
-    case resource(MCPResourceContent)
+// MARK: - Content Types
 
+/// Content block in a response
+public enum Content: Codable, Sendable {
+    case text(TextContent)
+    case image(ImageContent)
+    case resource(ResourceContent)
+    
     enum CodingKeys: String, CodingKey {
         case type
     }
-
+    
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(String.self, forKey: .type)
-
+        
         switch type {
         case "text":
-            self = .text(try MCPTextContent(from: decoder))
+            self = .text(try TextContent(from: decoder))
         case "image":
-            self = .image(try MCPImageContent(from: decoder))
+            self = .image(try ImageContent(from: decoder))
         case "resource":
-            self = .resource(try MCPResourceContent(from: decoder))
+            self = .resource(try ResourceContent(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type,
@@ -177,7 +234,7 @@ public enum MCPContent: Codable, Sendable {
             )
         }
     }
-
+    
     public func encode(to encoder: Encoder) throws {
         switch self {
         case .text(let content):
@@ -191,22 +248,35 @@ public enum MCPContent: Codable, Sendable {
 }
 
 /// Text content
-public struct MCPTextContent: Codable, Sendable {
+public struct TextContent: Codable, Sendable {
     public let type: String = "text"
     public let text: String
+    
+    public init(text: String) {
+        self.text = text
+    }
 }
 
 /// Image content
-public struct MCPImageContent: Codable, Sendable {
+public struct ImageContent: Codable, Sendable {
     public let type: String = "image"
     public let data: String
     public let mimeType: String
+    
+    public init(data: String, mimeType: String) {
+        self.data = data
+        self.mimeType = mimeType
+    }
 }
 
 /// Resource content
-public struct MCPResourceContent: Codable, Sendable {
+public struct ResourceContent: Codable, Sendable {
     public let type: String = "resource"
     public let resource: MCPResourceReference
+    
+    public init(resource: MCPResourceReference) {
+        self.resource = resource
+    }
 }
 
 /// Resource reference
@@ -219,11 +289,55 @@ public struct MCPResourceReference: Codable, Sendable {
 
 // MARK: - MCP Errors
 
-public enum MCPError: Error, Sendable {
+public enum MCPError: Error, Sendable, LocalizedError {
     case initializationFailed(String)
+    case notInitialized
     case connectionFailed(String)
+    case communicationError(String)
     case requestFailed(String)
     case invalidResponse(String)
+    case invalidConfiguration(String)
     case toolNotFound(String)
+    case toolExecutionFailed(String)
+    case serverError(String)
     case serverNotRunning
+    
+    public var errorDescription: String? {
+        switch self {
+        case .initializationFailed(let msg):
+            return "Initialization failed: \(msg)"
+        case .notInitialized:
+            return "MCP client not initialized"
+        case .connectionFailed(let msg):
+            return "Connection failed: \(msg)"
+        case .communicationError(let msg):
+            return "Communication error: \(msg)"
+        case .requestFailed(let msg):
+            return "Request failed: \(msg)"
+        case .invalidResponse(let msg):
+            return "Invalid response: \(msg)"
+        case .invalidConfiguration(let msg):
+            return "Invalid configuration: \(msg)"
+        case .toolNotFound(let msg):
+            return "Tool not found: \(msg)"
+        case .toolExecutionFailed(let msg):
+            return "Tool execution failed: \(msg)"
+        case .serverError(let msg):
+            return "Server error: \(msg)"
+        case .serverNotRunning:
+            return "MCP server not running"
+        }
+    }
+}
+
+// MARK: - Type Aliases for Backward Compatibility
+
+public typealias MCPInitializeParams = InitializeParams
+public typealias MCPInitializeResult = InitializeResult
+public struct MCPToolsListResult: Codable, Sendable {
+    public let tools: [MCPToolInfo]
+    
+    public init(tools: [MCPToolInfo]) {
+        self.tools = tools
+    }
 }

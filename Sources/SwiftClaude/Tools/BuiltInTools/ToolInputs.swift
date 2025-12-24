@@ -60,6 +60,42 @@ public struct WriteToolInput: Codable, Sendable, Equatable {
     }
 }
 
+// MARK: - Update Tool Input
+
+public struct UpdateToolInput: Codable, Sendable, Equatable {
+    public let filePath: String
+    public let startLine: Int
+    public let endLine: Int
+    public let newContent: String
+    
+    public init(filePath: String, startLine: Int, endLine: Int, newContent: String) {
+        self.filePath = filePath
+        self.startLine = startLine
+        self.endLine = endLine
+        self.newContent = newContent
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case filePath = "file_path"
+        case startLine = "start_line"
+        case endLine = "end_line"
+        case newContent = "new_content"
+    }
+    
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "file_path": .string(description: "Absolute path to the file to update"),
+                "start_line": .integer(description: "Starting line number (0-indexed, inclusive)"),
+                "end_line": .integer(description: "Ending line number (0-indexed, exclusive)"),
+                "new_content": .string(description: "New content to replace the specified line range")
+            ],
+            required: ["file_path", "start_line", "end_line", "new_content"]
+        )
+    }
+}
+
 // MARK: - Bash Tool Input
 
 public struct BashToolInput: Codable, Sendable, Equatable {

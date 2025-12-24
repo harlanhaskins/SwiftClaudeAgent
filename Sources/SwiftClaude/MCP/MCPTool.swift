@@ -31,16 +31,16 @@ public struct MCPTool: Tool, Sendable {
             arguments: input.arguments
         )
 
-        // Check if tool returned an error
+        // Check for error in result
         if result.isError == true {
-            let errorText = result.content.compactMap { content in
+            let errorText = result.content.compactMap { content -> String? in
                 if case .text(let textContent) = content {
                     return textContent.text
                 }
                 return nil
             }.joined(separator: "\n")
-
-            throw ToolError.executionFailed(errorText.isEmpty ? "Tool execution failed" : errorText)
+            
+            return ToolResult.error(errorText.isEmpty ? "Tool execution failed" : errorText)
         }
 
         // Convert MCP content to tool result
