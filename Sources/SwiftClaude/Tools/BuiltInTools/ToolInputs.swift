@@ -62,36 +62,65 @@ public struct WriteToolInput: Codable, Sendable, Equatable {
 
 // MARK: - Update Tool Input
 
-public struct UpdateToolInput: Codable, Sendable, Equatable {
-    public let filePath: String
+/// Represents a single line range replacement
+public struct UpdateReplacement: Codable, Sendable, Equatable {
     public let startLine: Int
     public let endLine: Int
     public let newContent: String
-    
-    public init(filePath: String, startLine: Int, endLine: Int, newContent: String) {
-        self.filePath = filePath
+
+    public init(startLine: Int, endLine: Int, newContent: String) {
         self.startLine = startLine
         self.endLine = endLine
         self.newContent = newContent
     }
-    
+
     enum CodingKeys: String, CodingKey {
-        case filePath = "file_path"
         case startLine = "start_line"
         case endLine = "end_line"
         case newContent = "new_content"
     }
-    
+}
+
+public struct UpdateToolInput: Codable, Sendable, Equatable {
+    public let filePath: String
+    public let replacements: [UpdateReplacement]
+
+    /// Initialize with replacements array
+    public init(filePath: String, replacements: [UpdateReplacement]) {
+        self.filePath = filePath
+        self.replacements = replacements
+    }
+
+    /// Convenience initializer for single replacement
+    public init(filePath: String, startLine: Int, endLine: Int, newContent: String) {
+        self.filePath = filePath
+        self.replacements = [UpdateReplacement(startLine: startLine, endLine: endLine, newContent: newContent)]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case filePath = "file_path"
+        case replacements
+    }
+
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
                 "file_path": .string(description: "Absolute path to the file to update"),
-                "start_line": .integer(description: "Starting line number (0-indexed, inclusive)"),
-                "end_line": .integer(description: "Ending line number (0-indexed, exclusive)"),
-                "new_content": .string(description: "New content to replace the specified line range")
+                "replacements": .array(
+                    items: .object(
+                        properties: [
+                            "start_line": .integer(description: "Starting line number (0-indexed, inclusive)"),
+                            "end_line": .integer(description: "Ending line number (0-indexed, exclusive)"),
+                            "new_content": .string(description: "New content to replace the specified line range")
+                        ],
+                        required: ["start_line", "end_line", "new_content"],
+                        description: "A single replacement specification"
+                    ),
+                    description: "Array of replacements to apply. Replacements are applied from bottom to top to preserve line numbers, so you can specify them in any order."
+                )
             ],
-            required: ["file_path", "start_line", "end_line", "new_content"]
+            required: ["file_path", "replacements"]
         )
     }
 }

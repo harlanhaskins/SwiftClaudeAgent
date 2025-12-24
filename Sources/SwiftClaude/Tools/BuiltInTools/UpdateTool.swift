@@ -3,13 +3,13 @@ import Foundation
 /// Tool for updating specific portions of a file.
 ///
 /// The Update tool allows Claude to modify specific sections of a file by replacing
-/// content within a specified line range. This is safer than full rewrites when only
-/// a portion of a file needs to be changed.
+/// content within specified line ranges. Supports both single and multiple replacements
+/// in a single operation.
 ///
 /// # Tool Name
 /// Name is automatically derived from type: `UpdateTool` → `"Update"`
 ///
-/// # Example
+/// # Single Replacement Example
 /// ```swift
 /// let tool = UpdateTool()
 /// let input = UpdateToolInput(
@@ -20,64 +20,169 @@ import Foundation
 /// )
 /// let result = try await tool.execute(input: input)
 /// ```
+///
+/// # Multiple Replacements Example
+/// ```swift
+/// let tool = UpdateTool()
+/// let input = UpdateToolInput(
+///     filePath: "/path/to/file.txt",
+///     replacements: [
+///         UpdateReplacement(startLine: 0, endLine: 1, newContent: "First line"),
+///         UpdateReplacement(startLine: 5, endLine: 7, newContent: "Middle lines"),
+///         UpdateReplacement(startLine: 10, endLine: 11, newContent: "Last line")
+///     ]
+/// )
+/// let result = try await tool.execute(input: input)
+/// ```
 public struct UpdateTool: Tool {
     public typealias Input = UpdateToolInput
-    
-    public let description = "Update specific portions of a file by replacing content within a line range"
-    
+
+    public let description = "Update specific portions of a file by replacing content within line ranges. Supports single or multiple replacements in one operation."
+
     public var inputSchema: JSONSchema {
         UpdateToolInput.schema
     }
-    
+
     public init() {}
     
     public func execute(input: UpdateToolInput) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: input.filePath)
-        
+
         // Check if file exists
         guard FileManager.default.fileExists(atPath: input.filePath) else {
             throw ToolError.notFound("File not found: \(input.filePath)")
         }
-        
+
+        // Validate replacements array
+        guard !input.replacements.isEmpty else {
+            throw ToolError.invalidInput("Replacements array cannot be empty")
+        }
+
         // Read current file contents
         let contents = try String(contentsOf: fileURL, encoding: .utf8)
-        let lines = contents.components(separatedBy: .newlines)
-        
-        // Validate line range
-        guard input.startLine >= 0 && input.startLine < lines.count else {
-            throw ToolError.invalidInput("Start line \(input.startLine) is out of bounds (file has \(lines.count) lines, 0-indexed)")
+
+        // Check if file had a trailing newline
+        let hadTrailingNewline = contents.hasSuffix("\n")
+
+        // Handle empty file as special case
+        var lines: [String]
+        if contents.isEmpty {
+            lines = []
+        } else {
+            // Split into lines using split() which preserves empty lines
+            lines = contents.split(separator: "\n", omittingEmptySubsequences: false)
+                .map(String.init)
+
+            // Remove the trailing empty string if file had trailing newline
+            if hadTrailingNewline && lines.last == "" {
+                lines.removeLast()
+            }
         }
-        
-        guard input.endLine >= input.startLine && input.endLine <= lines.count else {
-            throw ToolError.invalidInput("End line \(input.endLine) is out of bounds or before start line (file has \(lines.count) lines, 0-indexed, end is exclusive)")
+
+        // Validate all replacements
+        for (index, replacement) in input.replacements.enumerated() {
+            guard replacement.startLine >= 0 && replacement.startLine <= lines.count else {
+                throw ToolError.invalidInput("Replacement \(index): Start line \(replacement.startLine) is out of bounds (file has \(lines.count) lines, 0-indexed)")
+            }
+
+            guard replacement.endLine >= replacement.startLine && replacement.endLine <= lines.count else {
+                throw ToolError.invalidInput("Replacement \(index): End line \(replacement.endLine) is out of bounds or before start line (file has \(lines.count) lines, 0-indexed, end is exclusive)")
+            }
         }
-        
-        // Build new file content
-        var newLines = Array(lines[0..<input.startLine])
-        
-        // Add new content (split by newlines)
-        let contentLines = input.newContent.components(separatedBy: .newlines)
-        newLines.append(contentsOf: contentLines)
-        
-        // Add remaining original lines
-        if input.endLine < lines.count {
-            newLines.append(contentsOf: lines[input.endLine...])
+
+        // Check for overlapping ranges
+        try validateNoOverlaps(input.replacements)
+
+        // Sort replacements by descending start line (bottom to top)
+        // This ensures that earlier replacements don't affect line numbers of later ones
+        let sortedReplacements = input.replacements.sorted { $0.startLine > $1.startLine }
+
+        // Apply each replacement
+        var currentLines = lines
+        var totalLinesAdded = 0
+        var totalLinesRemoved = 0
+
+        for replacement in sortedReplacements {
+            let result = try applyReplacement(replacement, to: &currentLines)
+            totalLinesAdded += result.added
+            totalLinesRemoved += result.removed
         }
-        
-        // Write back to file
-        let newContent = newLines.joined(separator: "\n")
+
+        // Write back to file, preserving trailing newline behavior
+        var newContent = currentLines.joined(separator: "\n")
+        if hadTrailingNewline {
+            newContent += "\n"
+        }
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
-        
-        // Calculate changes for confirmation
-        let linesRemoved = input.endLine - input.startLine
+
+        // Generate result message
+        let netChange = totalLinesAdded - totalLinesRemoved
+        let diffDescription = netChange >= 0 ? "+\(netChange)" : "\(netChange)"
+
+        if input.replacements.count == 1 {
+            let rep = input.replacements[0]
+            return ToolResult(content: """
+                Successfully updated \(input.filePath)
+                Lines \(rep.startLine)-\(rep.endLine - 1) replaced with \(totalLinesAdded) new lines (\(diffDescription) net change)
+                File now has \(currentLines.count) lines
+                """)
+        } else {
+            return ToolResult(content: """
+                Successfully updated \(input.filePath)
+                Applied \(input.replacements.count) replacements: removed \(totalLinesRemoved) lines, added \(totalLinesAdded) lines (\(diffDescription) net change)
+                File now has \(currentLines.count) lines
+                """)
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    private func validateNoOverlaps(_ replacements: [UpdateReplacement]) throws {
+        let sorted = replacements.sorted { $0.startLine < $1.startLine }
+
+        for i in 0..<sorted.count - 1 {
+            let current = sorted[i]
+            let next = sorted[i + 1]
+
+            if current.endLine > next.startLine {
+                throw ToolError.invalidInput("Overlapping replacements: lines \(current.startLine)-\(current.endLine) overlap with \(next.startLine)-\(next.endLine)")
+            }
+        }
+    }
+
+    private func applyReplacement(
+        _ replacement: UpdateReplacement,
+        to lines: inout [String]
+    ) throws -> (added: Int, removed: Int) {
+        // Build new section
+        var newSection: [String] = []
+
+        // Add lines before the replacement
+        newSection.append(contentsOf: lines[0..<replacement.startLine])
+
+        // Add new content (split by newlines, preserving empty lines)
+        var contentLines = replacement.newContent.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+
+        // Remove trailing empty string if newContent ends with newline
+        if replacement.newContent.hasSuffix("\n") && contentLines.last == "" {
+            contentLines.removeLast()
+        }
+
+        newSection.append(contentsOf: contentLines)
+
+        // Add remaining original lines
+        if replacement.endLine < lines.count {
+            newSection.append(contentsOf: lines[replacement.endLine...])
+        }
+
+        // Calculate changes
+        let linesRemoved = replacement.endLine - replacement.startLine
         let linesAdded = contentLines.count
-        let linesDiff = linesAdded - linesRemoved
-        let diffDescription = linesDiff >= 0 ? "+\(linesDiff)" : "\(linesDiff)"
-        
-        return ToolResult(content: """
-            Successfully updated \(input.filePath)
-            Lines \(input.startLine)-\(input.endLine - 1) replaced with \(linesAdded) new lines (\(diffDescription) net change)
-            File now has \(newLines.count) lines
-            """)
+
+        // Update lines array
+        lines = newSection
+
+        return (added: linesAdded, removed: linesRemoved)
     }
 }
