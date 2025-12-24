@@ -2,19 +2,35 @@ import Foundation
 
 /// MCP server configuration
 public struct MCPServerConfig: Codable, Sendable {
-    public let command: String
+    public let command: String?
     public let args: [String]?
     public let env: [String: String]?
-
+    public let url: String?
+    
+    /// Initialize with command for stdio-based servers
     public init(command: String, args: [String]? = nil, env: [String: String]? = nil) {
         self.command = command
         self.args = args
         self.env = env
+        self.url = nil
+    }
+    
+    /// Initialize with URL for HTTP-based servers
+    public init(url: String) {
+        self.command = nil
+        self.args = nil
+        self.env = nil
+        self.url = url
+    }
+    
+    /// Check if this is an HTTP-based server
+    public var isHTTP: Bool {
+        url != nil
     }
 }
 
 /// Client for communicating with MCP servers via stdio
-public actor MCPClient {
+public actor MCPClient: MCPClientProtocol {
     private let config: MCPServerConfig
     private var process: Process?
     private var stdinPipe: Pipe?
@@ -36,6 +52,10 @@ public actor MCPClient {
         guard process == nil else {
             throw MCPError.connectionFailed("Server already running")
         }
+        
+        guard let command = config.command else {
+            throw MCPError.connectionFailed("No command specified for stdio server")
+        }
 
         // Create pipes for stdio
         let stdinPipe = Pipe()
@@ -44,7 +64,7 @@ public actor MCPClient {
         // Configure process
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [config.command] + (config.args ?? [])
+        process.arguments = [command] + (config.args ?? [])
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         process.standardError = FileHandle.nullDevice

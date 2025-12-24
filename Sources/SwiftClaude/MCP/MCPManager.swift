@@ -28,7 +28,7 @@ public struct MCPConfiguration: Codable, Sendable {
 
 /// Manages multiple MCP server connections
 public actor MCPManager {
-    private var clients: [String: MCPClient] = [:]
+    private var clients: [String: any MCPClientProtocol] = [:]
     private var isStarted: Bool = false
 
     private let configuration: MCPConfiguration
@@ -44,14 +44,20 @@ public actor MCPManager {
         guard !isStarted else { return }
 
         for (serverName, serverConfig) in configuration.mcpServers {
-            let client = MCPClient(config: serverConfig)
+            // Create appropriate client based on configuration
+            let client: any MCPClientProtocol
+            if serverConfig.isHTTP {
+                client = HTTPMCPClient(config: serverConfig)
+            } else {
+                client = MCPClient(config: serverConfig)
+            }
 
             do {
                 try await client.start()
                 clients[serverName] = client
                 print("✓ Started MCP server: \(serverName)")
             } catch {
-                print("✗ Failed to start MCP server \(serverName): \(error.localizedDescription)")
+                print("✗ Failed to start MCP server \(serverName): \(error)")
                 // Continue with other servers even if one fails
             }
         }

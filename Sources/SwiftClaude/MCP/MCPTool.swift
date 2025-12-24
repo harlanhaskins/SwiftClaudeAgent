@@ -5,7 +5,7 @@ public struct MCPTool: Tool, Sendable {
     public typealias Input = MCPToolInput
 
     private let definition: MCPToolDefinition
-    private let client: MCPClient
+    private let client: any MCPClientProtocol
 
     public var name: String {
         definition.name
@@ -19,7 +19,7 @@ public struct MCPTool: Tool, Sendable {
         definition.inputSchema
     }
 
-    public init(definition: MCPToolDefinition, client: MCPClient) {
+    public init(definition: MCPToolDefinition, client: any MCPClientProtocol) {
         self.definition = definition
         self.client = client
     }

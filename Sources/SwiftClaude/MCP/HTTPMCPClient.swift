@@ -3,27 +3,16 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// Configuration for HTTP MCP servers
-public struct HTTPMCPConfig: Codable, Sendable {
-    public let url: String
-    public let headers: [String: String]?
-    
-    public init(url: String, headers: [String: String]? = nil) {
-        self.url = url
-        self.headers = headers
-    }
-}
-
 /// Client for communicating with MCP servers via HTTP with SSE
 /// Note: SSE support is limited on Linux
 public actor HTTPMCPClient: MCPClientProtocol {
-    private let config: HTTPMCPConfig
+    private let config: MCPServerConfig
     private var nextRequestId: Int = 1
     private var isInitialized: Bool = false
     private var serverInfo: Implementation?
     private var serverCapabilities: ServerCapabilities?
 
-    public init(config: HTTPMCPConfig) {
+    public init(config: MCPServerConfig) {
         self.config = config
     }
 
@@ -31,17 +20,22 @@ public actor HTTPMCPClient: MCPClientProtocol {
 
     /// Start the MCP server connection and initialize
     public func start() async throws {
+        guard config.url != nil else {
+            throw MCPError.connectionFailed("No URL specified for HTTP server")
+        }
+        
         // Send initialize request
+        // For HTTP servers like sosumi.ai, use empty objects instead of null
         let params = InitializeParams(
             protocolVersion: "2024-11-05",
             capabilities: ClientCapabilities(
-                roots: nil,
-                sampling: nil
+                roots: RootsCapability(),
+                sampling: SamplingCapability()
             ),
             clientInfo: Implementation(name: "SwiftClaude", version: "1.0.0")
         )
 
-        let result: InitializeResult = try await sendRequestDirect(method: "initialize", params: params)
+        let result: MCPInitializeResult = try await sendRequestDirect(method: "initialize", params: params)
         serverInfo = result.serverInfo
         serverCapabilities = result.capabilities
         isInitialized = true
@@ -50,149 +44,207 @@ public actor HTTPMCPClient: MCPClientProtocol {
         try await sendNotification(method: "notifications/initialized", params: EmptyParams())
     }
 
-    /// Stop the MCP server connection
+    /// Stop the HTTP connection
     public func stop() async {
         isInitialized = false
+        serverInfo = nil
+        serverCapabilities = nil
     }
 
     // MARK: - Tool Operations
 
     /// List available tools from the MCP server
-    public func listTools() async throws -> [MCPToolInfo] {
+    public func listTools() async throws -> [MCPToolDefinition] {
         guard isInitialized else {
-            throw MCPError.notInitialized
+            throw MCPError.serverNotRunning
         }
 
-        struct ListToolsResult: Codable {
-            let tools: [MCPToolInfo]
-        }
-
-        let result: ListToolsResult = try await sendRequestDirect(method: "tools/list", params: EmptyParams())
+        let result: MCPToolsListResult = try await sendRequestDirect(method: "tools/list", params: EmptyParams())
         return result.tools
     }
 
     /// Call a tool on the MCP server
     public func callTool(name: String, arguments: [String: AnyCodable]?) async throws -> MCPToolCallResult {
         guard isInitialized else {
-            throw MCPError.notInitialized
+            throw MCPError.serverNotRunning
         }
 
         let params = MCPToolCallParams(name: name, arguments: arguments)
-        let result: MCPToolCallResult = try await sendRequestDirect(method: "tools/call", params: params)
-        return result
-    }
-    
-    // MARK: - Server Info
-    
-    public var info: Implementation? {
-        serverInfo
-    }
-    
-    public var capabilities: ServerCapabilities? {
-        serverCapabilities
+        return try await sendRequestDirect(method: "tools/call", params: params)
     }
 
-    // MARK: - Private Implementation
+    // MARK: - HTTP Communication
 
-    private func sendRequestDirect<Params: Codable & Sendable, Result: Codable>(
+    /// Send a typed request and decode the response
+    private func sendRequestDirect<Params: Encodable & Sendable, Result: Decodable>(
         method: String,
         params: Params
     ) async throws -> Result {
-        let requestId = nextRequestId
+        guard let urlString = config.url else {
+            throw MCPError.connectionFailed("No URL configured")
+        }
+        
+        guard let url = URL(string: urlString) else {
+            throw MCPError.connectionFailed("Invalid URL: \(urlString)")
+        }
+
+        let id = nextRequestId
         nextRequestId += 1
 
-        let request = JSONRPCRequest(
-            jsonrpc: "2.0",
-            id: requestId,
-            method: method,
-            params: params
-        )
-
-        guard let url = URL(string: config.url) else {
-            throw MCPError.invalidConfiguration("Invalid URL: \(config.url)")
-        }
+        // Create JSON-RPC request manually to avoid AnyCodable issues
+        let requestDict: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": try encodeToJSON(params)
+        ]
 
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Accept both JSON responses and SSE (for servers that support it)
+        urlRequest.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
 
-        // Add auth headers if configured
-        if let headers = config.headers {
-            for (key, value) in headers {
+        // Add any custom headers from environment
+        if let env = config.env {
+            for (key, value) in env {
                 urlRequest.setValue(value, forHTTPHeaderField: key)
             }
         }
 
-        let encoder = JSONEncoder()
-        urlRequest.httpBody = try encoder.encode(request)
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: requestDict)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw MCPError.communicationError("Invalid response type")
+            throw MCPError.connectionFailed("Invalid response type")
         }
 
-        guard httpResponse.statusCode == 200 else {
-            throw MCPError.communicationError("HTTP error: \(httpResponse.statusCode)")
+        guard (200...299).contains(httpResponse.statusCode) else {
+            // Try to decode error message from response
+            if let errorText = String(data: data, encoding: .utf8) {
+                throw MCPError.connectionFailed("HTTP error \(httpResponse.statusCode): \(errorText)")
+            }
+            throw MCPError.connectionFailed("HTTP error: \(httpResponse.statusCode)")
         }
-        
-        // Decode the JSON-RPC response
-        let decoder = JSONDecoder()
-        let jsonResponse = try decoder.decode(JSONRPCResponse.self, from: data)
-        
-        // Check for errors
-        if let error = jsonResponse.error {
-            throw MCPError.serverError(error.message)
+
+        // Check if response is SSE format
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
+        if contentType.contains("text/event-stream") {
+            // Parse SSE response
+            guard let responseText = String(data: data, encoding: .utf8) else {
+                throw MCPError.invalidResponse("Could not decode SSE response")
+            }
+            
+            // Extract JSON from SSE event
+            // SSE format: "event: message\ndata: {json}\n\n"
+            let lines = responseText.split(separator: "\n")
+            var jsonData: String?
+            
+            for line in lines {
+                if line.hasPrefix("data: ") {
+                    jsonData = String(line.dropFirst(6)) // Remove "data: " prefix
+                } else if line.hasPrefix("data:") {
+                    jsonData = String(line.dropFirst(5)) // Remove "data:" prefix
+                }
+            }
+            
+            guard let jsonString = jsonData,
+                  let jsonData = jsonString.data(using: .utf8) else {
+                throw MCPError.invalidResponse("No JSON data in SSE response")
+            }
+            
+            let decoder = JSONDecoder()
+            let jsonResponse = try decoder.decode(JSONRPCResponse.self, from: jsonData)
+            
+            if let error = jsonResponse.error {
+                throw MCPError.requestFailed("Server error: \(error.message)")
+            }
+            
+            guard let result = jsonResponse.result else {
+                throw MCPError.invalidResponse("No result in response")
+            }
+            
+            let resultData = try JSONEncoder().encode(result)
+            return try decoder.decode(Result.self, from: resultData)
+        } else {
+            // Standard JSON response
+            let decoder = JSONDecoder()
+            let jsonResponse = try decoder.decode(JSONRPCResponse.self, from: data)
+
+            if let error = jsonResponse.error {
+                throw MCPError.requestFailed("Server error: \(error.message)")
+            }
+
+            guard let result = jsonResponse.result else {
+                throw MCPError.invalidResponse("No result in response")
+            }
+
+            let resultData = try JSONEncoder().encode(result)
+            return try decoder.decode(Result.self, from: resultData)
         }
-        
-        guard let result = jsonResponse.result else {
-            throw MCPError.invalidResponse("No result in response")
-        }
-        
-        // Convert the AnyCodable result to the expected Result type
-        let resultData = try JSONEncoder().encode(result)
-        return try decoder.decode(Result.self, from: resultData)
     }
 
-    private func sendNotification<Params: Codable & Sendable>(
+    /// Send a notification (no response expected)
+    private func sendNotification<Params: Encodable & Sendable>(
         method: String,
         params: Params
     ) async throws {
-        let notification = JSONRPCNotification(
-            jsonrpc: "2.0",
-            method: method,
-            params: params
-        )
-
-        guard let url = URL(string: config.url) else {
-            throw MCPError.invalidConfiguration("Invalid URL: \(config.url)")
+        guard let urlString = config.url else {
+            throw MCPError.connectionFailed("No URL configured")
+        }
+        
+        guard let url = URL(string: urlString) else {
+            throw MCPError.connectionFailed("Invalid URL: \(urlString)")
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Create JSON-RPC notification manually to avoid AnyCodable issues
+        let notificationDict: [String: Any] = [
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": try encodeToJSON(params)
+        ]
 
-        // Add auth headers if configured
-        if let headers = config.headers {
-            for (key, value) in headers {
-                request.setValue(value, forHTTPHeaderField: key)
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+
+        // Add any custom headers from environment
+        if let env = config.env {
+            for (key, value) in env {
+                urlRequest.setValue(value, forHTTPHeaderField: key)
             }
         }
 
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: notificationDict)
+
+        // Send without waiting for response
+        _ = try await URLSession.shared.data(for: urlRequest)
+    }
+
+    // MARK: - Helper Functions
+
+    /// Encode a Codable value to JSON object
+    private func encodeToJSON<T: Encodable>(_ value: T) throws -> Any {
         let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(notification)
+        let data = try encoder.encode(value)
+        return try JSONSerialization.jsonObject(with: data)
+    }
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+    // MARK: - Server Info
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MCPError.communicationError("Invalid response type")
-        }
+    /// Get server information
+    public var info: Implementation? {
+        serverInfo
+    }
 
-        guard httpResponse.statusCode == 200 else {
-            throw MCPError.communicationError("HTTP error: \(httpResponse.statusCode)")
-        }
+    /// Get server capabilities
+    public var capabilities: ServerCapabilities? {
+        serverCapabilities
     }
 }
 
-// Helper types
+// MARK: - Helper Types
+
 private struct EmptyParams: Codable, Sendable {}

@@ -115,17 +115,20 @@ public struct ServerCapabilities: Codable, Sendable {
     public let prompts: PromptsCapability?
     public let resources: ResourcesCapability?
     public let logging: LoggingCapability?
+    public let completions: CompletionsCapability?
     
     public init(
         tools: ToolsCapability? = nil,
         prompts: PromptsCapability? = nil,
         resources: ResourcesCapability? = nil,
-        logging: LoggingCapability? = nil
+        logging: LoggingCapability? = nil,
+        completions: CompletionsCapability? = nil
     ) {
         self.tools = tools
         self.prompts = prompts
         self.resources = resources
         self.logging = logging
+        self.completions = completions
     }
 }
 
@@ -160,6 +163,11 @@ public struct ResourcesCapability: Codable, Sendable {
 
 /// Logging capability
 public struct LoggingCapability: Codable, Sendable {
+    public init() {}
+}
+
+/// Completions capability
+public struct CompletionsCapability: Codable, Sendable {
     public init() {}
 }
 
