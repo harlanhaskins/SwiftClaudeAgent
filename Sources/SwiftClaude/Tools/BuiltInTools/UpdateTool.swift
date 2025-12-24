@@ -79,23 +79,33 @@ public struct UpdateTool: Tool {
             }
         }
 
-        // Validate all replacements
-        for (index, replacement) in input.replacements.enumerated() {
+        // Convert from 1-based (user-facing) to 0-based (internal) line numbers
+        let zeroBasedReplacements = input.replacements.map { replacement in
+            UpdateReplacement(
+                startLine: replacement.startLine - 1,
+                endLine: replacement.endLine - 1,
+                newContent: replacement.newContent
+            )
+        }
+
+        // Validate all replacements (now in 0-based)
+        for (index, replacement) in zeroBasedReplacements.enumerated() {
+            let originalReplacement = input.replacements[index]
             guard replacement.startLine >= 0 && replacement.startLine <= lines.count else {
-                throw ToolError.invalidInput("Replacement \(index): Start line \(replacement.startLine) is out of bounds (file has \(lines.count) lines, 0-indexed)")
+                throw ToolError.invalidInput("Replacement \(index): Start line \(originalReplacement.startLine) is out of bounds (file has \(lines.count) lines, valid range: 1-\(lines.count))")
             }
 
             guard replacement.endLine >= replacement.startLine && replacement.endLine <= lines.count else {
-                throw ToolError.invalidInput("Replacement \(index): End line \(replacement.endLine) is out of bounds or before start line (file has \(lines.count) lines, 0-indexed, end is exclusive)")
+                throw ToolError.invalidInput("Replacement \(index): End line \(originalReplacement.endLine) is out of bounds or before start line (file has \(lines.count) lines, valid range: 1-\(lines.count), end is exclusive)")
             }
         }
 
         // Check for overlapping ranges
-        try validateNoOverlaps(input.replacements)
+        try validateNoOverlaps(zeroBasedReplacements)
 
         // Sort replacements by descending start line (bottom to top)
         // This ensures that earlier replacements don't affect line numbers of later ones
-        let sortedReplacements = input.replacements.sorted { $0.startLine > $1.startLine }
+        let sortedReplacements = zeroBasedReplacements.sorted { $0.startLine > $1.startLine }
 
         // Apply each replacement
         var currentLines = lines
@@ -115,7 +125,7 @@ public struct UpdateTool: Tool {
         }
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        // Generate result message
+        // Generate result message (convert back to 1-based for display)
         let netChange = totalLinesAdded - totalLinesRemoved
         let diffDescription = netChange >= 0 ? "+\(netChange)" : "\(netChange)"
 

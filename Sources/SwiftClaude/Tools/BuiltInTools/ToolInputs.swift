@@ -110,14 +110,14 @@ public struct UpdateToolInput: Codable, Sendable, Equatable {
                 "replacements": .array(
                     items: .object(
                         properties: [
-                            "start_line": .integer(description: "Starting line number (0-indexed, inclusive)"),
-                            "end_line": .integer(description: "Ending line number (0-indexed, exclusive)"),
+                            "start_line": .integer(description: "Starting line number (1-indexed, inclusive) - matches line numbers shown by Read tool"),
+                            "end_line": .integer(description: "Ending line number (1-indexed, exclusive) - matches line numbers shown by Read tool"),
                             "new_content": .string(description: "New content to replace the specified line range")
                         ],
                         required: ["start_line", "end_line", "new_content"],
                         description: "A single replacement specification"
                     ),
-                    description: "Array of replacements to apply. Replacements are applied from bottom to top to preserve line numbers, so you can specify them in any order."
+                    description: "Array of replacements to apply. Line numbers are 1-indexed to match the Read tool output. Replacements are applied from bottom to top to preserve line numbers, so you can specify them in any order."
                 )
             ],
             required: ["file_path", "replacements"]
