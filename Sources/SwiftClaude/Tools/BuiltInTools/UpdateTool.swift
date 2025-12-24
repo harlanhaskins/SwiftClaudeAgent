@@ -103,6 +103,15 @@ public struct UpdateTool: Tool {
         // Check for overlapping ranges
         try validateNoOverlaps(zeroBasedReplacements)
 
+        // Check if any replacement affects the last line and explicitly adds a trailing newline
+        var shouldHaveTrailingNewline = hadTrailingNewline
+        for replacement in zeroBasedReplacements {
+            if replacement.endLine == lines.count && replacement.newContent.hasSuffix("\n") {
+                // This replacement affects the end of the file and has a trailing newline
+                shouldHaveTrailingNewline = true
+            }
+        }
+
         // Sort replacements by descending start line (bottom to top)
         // This ensures that earlier replacements don't affect line numbers of later ones
         let sortedReplacements = zeroBasedReplacements.sorted { $0.startLine > $1.startLine }
@@ -120,7 +129,7 @@ public struct UpdateTool: Tool {
 
         // Write back to file, preserving trailing newline behavior
         var newContent = currentLines.joined(separator: "\n")
-        if hadTrailingNewline {
+        if shouldHaveTrailingNewline {
             newContent += "\n"
         }
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)

@@ -949,5 +949,51 @@ line 4
         // Verify that line 2 (1-indexed, which is "line 1" in 0-indexed) was replaced
         #expect(updatedContent == "line 0\nREPLACED\nline 2\nline 3\nline 4")
     }
+
+    // MARK: - Bug Fix Tests
+
+    @Test("Bug fix - Preserve trailing newline in replacement when file has none")
+    func bugFixPreserveTrailingNewlineInReplacement() async throws {
+        // Test Case 1 from bug report: Replacing last line
+        let content = "X\nY\nZ"  // No trailing newline
+        let filePath = try createTestFile(content: content)
+
+        let tool = UpdateTool()
+        let input = UpdateToolInput(
+            filePath: filePath,
+            startLine: 3,
+            endLine: 4,
+            newContent: "Z_MODIFIED\n"  // Has trailing newline
+        )
+
+        let result = try await tool.execute(input: input)
+        #expect(!result.isError)
+
+        let updatedContent = try readFile(filePath)
+        #expect(updatedContent == "X\nY\nZ_MODIFIED\n", "Should preserve trailing newline from replacement")
+        #expect(updatedContent.hasSuffix("\n"), "File should end with newline after replacement")
+    }
+
+    @Test("Bug fix - Append with trailing newline to file without one")
+    func bugFixAppendWithTrailingNewline() async throws {
+        // Test Case 2 from bug report: Appending to file
+        let content = "X\nY\nZ_MODIFIED"  // No trailing newline
+        let filePath = try createTestFile(content: content)
+
+        let tool = UpdateTool()
+        let input = UpdateToolInput(
+            filePath: filePath,
+            startLine: 4,
+            endLine: 4,
+            newContent: "APPENDED_LINE\n"  // Has trailing newline
+        )
+
+        let result = try await tool.execute(input: input)
+        #expect(!result.isError)
+
+        let updatedContent = try readFile(filePath)
+        #expect(updatedContent == "X\nY\nZ_MODIFIED\nAPPENDED_LINE\n", "Should preserve trailing newline when appending")
+        #expect(updatedContent.hasSuffix("\n"), "File should end with newline after appending")
+    }
 }
 
