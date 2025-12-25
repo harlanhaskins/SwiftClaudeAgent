@@ -64,10 +64,10 @@ public struct GlobTool: Tool {
         // Format output
         let count = matchingFiles.count
         if matchingFiles.isEmpty {
-            return ToolResult(content: "Glob(pattern: \(input.pattern), matches: 0)")
+            return ToolResult(content: "No matches found")
         } else {
             let fileList = matchingFiles.joined(separator: "\n")
-            return ToolResult(content: "Glob(pattern: \(input.pattern), matches: \(count))\n\(fileList)")
+            return ToolResult(content: "Found \(count) matches\n\(fileList)")
         }
     }
 

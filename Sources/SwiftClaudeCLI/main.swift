@@ -460,11 +460,10 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                         print() // New line after prompt
                         hasOutput = true
                     }
-                    print("\n\(ANSIColor.yellow.rawValue)🔧 Using tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
+                    // Format inputs as ToolName(param: value, param: value)
                     let inputDict = toolUse.input.toDictionary()
-                    for (key, value) in inputDict {
-                        print("   \(key): \(value)")
-                    }
+                    let params = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+                    print("\n\(ANSIColor.yellow.rawValue)\(toolUse.name)(\(params))\(ANSIColor.reset.rawValue)")
 
                 case .toolResult:
                     break // Tool results are internal
@@ -477,21 +476,26 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 hasOutput = true
             }
 
-            if resultMsg.isError {
-                print("\n\(ANSIColor.red.rawValue)❌ Tool Error:\(ANSIColor.reset.rawValue)")
-            } else {
-                print("\n\(ANSIColor.green.rawValue)✅ Tool Result:\(ANSIColor.reset.rawValue)")
-            }
-
             for block in resultMsg.content {
                 if case .text(let text) = block {
                     // Print tool result with indentation
                     let lines = text.text.split(separator: "\n", omittingEmptySubsequences: false)
-                    for line in lines.prefix(20) { // Limit output
-                        print("   \(line)")
+                    if resultMsg.isError {
+                        print("  \(ANSIColor.red.rawValue)→ Error: \(lines.first ?? "")\(ANSIColor.reset.rawValue)")
+                        for line in lines.dropFirst().prefix(19) {
+                            print("    \(line)")
+                        }
+                    } else {
+                        for (index, line) in lines.prefix(20).enumerated() {
+                            if index == 0 && !line.isEmpty {
+                                print("  \(ANSIColor.green.rawValue)→\(ANSIColor.reset.rawValue) \(line)")
+                            } else {
+                                print("  \(line)")
+                            }
+                        }
                     }
                     if lines.count > 20 {
-                        print("   ... (\(lines.count - 20) more lines)")
+                        print("  ... (\(lines.count - 20) more lines)")
                     }
                 }
             }

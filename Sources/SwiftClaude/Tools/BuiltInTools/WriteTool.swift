@@ -42,9 +42,8 @@ public struct WriteTool: Tool {
         try input.content.write(to: fileURL, atomically: true, encoding: .utf8)
 
         // Generate result message
-        let fileName = fileURL.lastPathComponent
         let lineCount = input.content.components(separatedBy: .newlines).count
 
-        return ToolResult(content: "Write(file: \(fileName), lines: \(lineCount))")
+        return ToolResult(content: "Wrote \(lineCount) lines")
     }
 }

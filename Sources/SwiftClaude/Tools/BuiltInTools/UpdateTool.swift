@@ -195,7 +195,6 @@ public struct UpdateTool: Tool {
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
         // Generate result message with new format
-        let fileName = fileURL.lastPathComponent
         let netChange = totalLinesAdded - totalLinesRemoved
         let netSign = netChange >= 0 ? "+" : ""
 
@@ -204,22 +203,22 @@ public struct UpdateTool: Tool {
         if input.replacements.count == 1 {
             let rep = input.replacements[0]
             let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
-            output += "Update(file: \(fileName), lines: \(rangeDesc) → \(totalLinesAdded), net: \(netSign)\(netChange))\n"
+            output += "Replaced lines \(rangeDesc) with \(totalLinesAdded) lines (\(netSign)\(netChange))\n"
 
             // Show the new lines that were added
             let startLineNum = rep.startLine
             let newLines = currentLines[(startLineNum - 1)..<min(startLineNum - 1 + totalLinesAdded, currentLines.count)]
             for (index, line) in newLines.enumerated() {
                 let lineNum = startLineNum + index
-                output += "  \(lineNum): \(line)\n"
+                output += "\(lineNum): \(line)\n"
             }
         } else {
-            output += "Update(file: \(fileName), replacements: \(input.replacements.count), -\(totalLinesRemoved) +\(totalLinesAdded), net: \(netSign)\(netChange))\n"
+            output += "Applied \(input.replacements.count) replacements: -\(totalLinesRemoved) +\(totalLinesAdded) (\(netSign)\(netChange))\n"
 
             // For multiple replacements, show a summary of each
             for rep in input.replacements {
                 let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
-                output += "  • Lines \(rangeDesc) updated\n"
+                output += "• Lines \(rangeDesc) updated\n"
             }
         }
 

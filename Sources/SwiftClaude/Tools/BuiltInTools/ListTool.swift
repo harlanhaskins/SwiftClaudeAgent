@@ -132,10 +132,10 @@ public struct ListTool: Tool {
 
     private func formatEntries(_ entries: [DirectoryEntry], path: String, recursive: Bool) -> String {
         if entries.isEmpty {
-            return "List(path: \(path), items: 0)"
+            return "Directory is empty"
         }
 
-        var output = "List(path: \(path), items: \(entries.count))\n"
+        var output = "\(entries.count) items\n"
 
         for entry in entries {
             let type = entry.isDirectory ? "dir " : "file"

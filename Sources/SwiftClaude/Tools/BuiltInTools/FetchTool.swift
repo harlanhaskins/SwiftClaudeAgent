@@ -85,15 +85,7 @@ public struct FetchTool: Tool {
 
         // Format output
         let sizeStr = formatByteCount(data.count)
-        let urlDisplay = url.host.map { host in
-            var display = host
-            if let path = url.path.isEmpty ? nil : url.path, path != "/" {
-                display += path
-            }
-            return display
-        } ?? input.url
-
-        var output = "Fetch(url: \(urlDisplay), status: \(statusCode), size: \(sizeStr))\n"
+        var output = "HTTP \(statusCode), \(sizeStr)\n"
 
         // Limit output size to avoid overwhelming Claude
         let maxContentLength = 50_000 // ~50KB of text

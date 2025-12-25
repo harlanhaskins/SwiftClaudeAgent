@@ -78,9 +78,9 @@ public struct GrepTool: Tool {
 
         // Format output
         if results.isEmpty {
-            return ToolResult(content: "Grep(pattern: \(input.pattern), matches: 0)")
+            return ToolResult(content: "No matches found")
         } else {
-            let output = formatResults(results, pattern: input.pattern, maxResults: maxResults)
+            let output = formatResults(results, maxResults: maxResults)
             return ToolResult(content: output)
         }
     }
@@ -165,12 +165,12 @@ public struct GrepTool: Tool {
         return results
     }
 
-    private func formatResults(_ results: [SearchResult], pattern: String, maxResults: Int) -> String {
-        var output = "Grep(pattern: \(pattern), matches: \(results.count)"
+    private func formatResults(_ results: [SearchResult], maxResults: Int) -> String {
+        var output = "Found \(results.count) matches"
         if results.count >= maxResults {
-            output += ", limited: true"
+            output += " (limited)"
         }
-        output += ")\n"
+        output += "\n"
 
         for result in results {
             output += "\(result.filePath):\(result.lineNumber): \(result.lineContent)\n"
