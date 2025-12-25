@@ -253,7 +253,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         // Setup file tracking hooks
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
 
-        print("🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
+        print("", terminator: "")
 
         var hasOutput = false
 
@@ -313,7 +313,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Keep retrying until no interruption occurs
         while true {
-            print("\n🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
+            print("\n", terminator: "")
             FileHandle.standardOutput.synchronizeFile()
 
             // Use a task group to run monitoring and streaming concurrently
