@@ -14,11 +14,17 @@ actor AnthropicAPIClient {
     private let anthropicVersion = "2023-06-01"
     private let converter = MessageConverter()
     private let parser = SSEParser()
+    private let urlSession: URLSession
 
     // MARK: - Initialization
 
     init(apiKey: String) {
         self.apiKey = apiKey
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
+        self.urlSession = URLSession(configuration: config)
     }
 
     // MARK: - Non-Streaming API
@@ -42,7 +48,7 @@ actor AnthropicAPIClient {
             stream: false
         )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
 
         try validateResponse(response, data: data)
 

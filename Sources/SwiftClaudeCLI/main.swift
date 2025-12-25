@@ -204,6 +204,15 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
+
+        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+            guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
+                return
+            }
+            let params = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            print("\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(params))")
+        }
+
         return client
     }
 
@@ -380,14 +389,11 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     }
                     print("\n\(ANSIColor.gray.rawValue)💭 [Thinking: \(thinkingBlock.thinking)]\(ANSIColor.reset.rawValue)")
 
-                case .toolUse(let toolUse):
+                case .toolUse:
                     if !hasOutput {
                         print()
                         hasOutput = true
                     }
-                    let inputDict = toolUse.input.toDictionary()
-                    let params = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
-                    print("\n\(ANSIColor.bold.rawValue)\(toolUse.name)\(ANSIColor.reset.rawValue)(\(params))")
 
                 case .toolResult:
                     break
