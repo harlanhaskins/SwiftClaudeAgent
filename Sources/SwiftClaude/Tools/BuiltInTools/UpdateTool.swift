@@ -9,25 +9,85 @@ import Foundation
 /// # Tool Name
 /// Name is automatically derived from type: `UpdateTool` → `"Update"`
 ///
-/// # Single Replacement Example
-/// ```swift
-/// let tool = UpdateTool()
-/// let input = UpdateToolInput(
-///     filePath: "/path/to/file.txt",
-///     startLine: 5,
-///     endLine: 10,
-///     newContent: "Updated content"
-/// )
-/// let result = try await tool.execute(input: input)
+/// # IMPORTANT: Common Mistakes to Avoid
+///
+/// ⚠️ **DO NOT include context that's already in the file**
+///
+/// **WRONG - Causes duplicates:**
+/// ```
+/// File has:
+///   334: func myFunction() {
+///   335:     let x = 1
+///   336:     let y = 2
+///   337:     // old code to replace
+///   ...
+///
+/// Update(startLine: 337, endLine: 400, newContent: "func myFunction() {\n    let x = 1\n    let y = 2\n    // new code")
+/// Result: Lines 334-336 stay, then new_content adds them again → DUPLICATE!
 /// ```
 ///
-/// # Multiple Replacements Example
+/// **CORRECT:**
+/// ```
+/// Update(startLine: 334, endLine: 400, newContent: "func myFunction() {\n    let x = 1\n    let y = 2\n    // new code")
+/// Result: Clean replacement, no duplicates
+/// ```
+///
+/// # Line Number Rules
+///
+/// - Line numbers are **1-indexed** (first line is 1, not 0)
+/// - `endLine` is **exclusive** (not replaced)
+/// - To replace lines 5-10 inclusive, use `startLine: 5, endLine: 11`
+/// - **Always read the file first** to get exact line numbers
+/// - `new_content` should ONLY contain lines that go between `startLine` and `endLine`
+///
+/// # Correct Usage Examples
+///
+/// **Example 1: Replace a function**
+/// ```
+/// File before (Read tool output):
+///   10: func oldFunction() {
+///   11:     return 42
+///   12: }
+///   13:
+///   14: func anotherFunction() {
+///
+/// Correct Update:
+///   startLine: 10
+///   endLine: 13  (exclusive, so replaces lines 10-12)
+///   newContent: "func newFunction() {\n    return 100\n}"
+///
+/// File after:
+///   10: func newFunction() {
+///   11:     return 100
+///   12: }
+///   13:
+///   14: func anotherFunction() {
+/// ```
+///
+/// **Example 2: Replace middle of function**
+/// ```
+/// File before:
+///   20: func process() {
+///   21:     let start = true
+///   22:     // old logic
+///   23:     let end = false
+///   24: }
+///
+/// To replace ONLY line 22:
+///   startLine: 22
+///   endLine: 23
+///   newContent: "    // new logic"
+///
+/// DON'T include lines 20-21 or 23-24 in newContent!
+/// ```
+///
+/// **Example 3: Multiple replacements**
 /// ```swift
 /// let tool = UpdateTool()
 /// let input = UpdateToolInput(
 ///     filePath: "/path/to/file.txt",
 ///     replacements: [
-///         UpdateReplacement(startLine: 0, endLine: 1, newContent: "First line"),
+///         UpdateReplacement(startLine: 1, endLine: 2, newContent: "First line"),
 ///         UpdateReplacement(startLine: 5, endLine: 7, newContent: "Middle lines"),
 ///         UpdateReplacement(startLine: 10, endLine: 11, newContent: "Last line")
 ///     ]
