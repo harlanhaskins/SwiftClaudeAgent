@@ -62,11 +62,12 @@ public struct GlobTool: Tool {
         matchingFiles.sort()
 
         // Format output
+        let count = matchingFiles.count
         if matchingFiles.isEmpty {
-            return ToolResult(content: "No files found matching pattern '\(input.pattern)'")
+            return ToolResult(content: "Glob(pattern: \(input.pattern), matches: 0)")
         } else {
-            let output = matchingFiles.joined(separator: "\n")
-            return ToolResult(content: "\(matchingFiles.count) files found:\n\(output)")
+            let fileList = matchingFiles.joined(separator: "\n")
+            return ToolResult(content: "Glob(pattern: \(input.pattern), matches: \(count))\n\(fileList)")
         }
     }
 

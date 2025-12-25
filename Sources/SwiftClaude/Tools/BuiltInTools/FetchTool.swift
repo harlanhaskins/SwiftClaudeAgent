@@ -71,7 +71,6 @@ public struct FetchTool: Tool {
 
         // Get response metadata
         let statusCode = httpResponse.statusCode
-        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
 
         // Check for HTTP errors
         guard (200...299).contains(statusCode) else {
@@ -85,21 +84,23 @@ public struct FetchTool: Tool {
         }
 
         // Format output
-        let contentLengthStr = formatByteCount(data.count)
-        var output = """
-        HTTP \(statusCode) OK
-        Content-Type: \(contentType)
-        Content-Length: \(contentLengthStr)
+        let sizeStr = formatByteCount(data.count)
+        let urlDisplay = url.host.map { host in
+            var display = host
+            if let path = url.path.isEmpty ? nil : url.path, path != "/" {
+                display += path
+            }
+            return display
+        } ?? input.url
 
-        """
+        var output = "Fetch(url: \(urlDisplay), status: \(statusCode), size: \(sizeStr))\n"
 
         // Limit output size to avoid overwhelming Claude
         let maxContentLength = 50_000 // ~50KB of text
         if content.count > maxContentLength {
             let truncated = String(content.prefix(maxContentLength))
-            let totalSizeStr = formatByteCount(content.utf8.count)
             output += truncated
-            output += "\n\n... (content truncated, \(totalSizeStr) total)"
+            output += "\n\n... (content truncated)"
         } else {
             output += content
         }

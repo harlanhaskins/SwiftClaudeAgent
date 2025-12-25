@@ -78,9 +78,9 @@ public struct GrepTool: Tool {
 
         // Format output
         if results.isEmpty {
-            return ToolResult(content: "No matches found for pattern '\(input.pattern)'")
+            return ToolResult(content: "Grep(pattern: \(input.pattern), matches: 0)")
         } else {
-            let output = formatResults(results, maxResults: maxResults)
+            let output = formatResults(results, pattern: input.pattern, maxResults: maxResults)
             return ToolResult(content: output)
         }
     }
@@ -165,18 +165,18 @@ public struct GrepTool: Tool {
         return results
     }
 
-    private func formatResults(_ results: [SearchResult], maxResults: Int) -> String {
-        var output = "\(results.count) matches found"
+    private func formatResults(_ results: [SearchResult], pattern: String, maxResults: Int) -> String {
+        var output = "Grep(pattern: \(pattern), matches: \(results.count)"
         if results.count >= maxResults {
-            output += " (limited to \(maxResults) results)"
+            output += ", limited: true"
         }
-        output += ":\n\n"
+        output += ")\n"
 
         for result in results {
             output += "\(result.filePath):\(result.lineNumber): \(result.lineContent)\n"
         }
 
-        return output
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Convert glob pattern to regex pattern (simplified version)

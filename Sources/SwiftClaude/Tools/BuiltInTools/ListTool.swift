@@ -63,7 +63,8 @@ public struct ListTool: Tool {
         }
 
         // Format output
-        let output = formatEntries(entries, recursive: recursive)
+        let dirName = directoryURL.lastPathComponent.isEmpty ? directoryURL.path : directoryURL.lastPathComponent
+        let output = formatEntries(entries, path: dirName, recursive: recursive)
         return ToolResult(content: output)
     }
 
@@ -129,12 +130,12 @@ public struct ListTool: Tool {
         return entries
     }
 
-    private func formatEntries(_ entries: [DirectoryEntry], recursive: Bool) -> String {
+    private func formatEntries(_ entries: [DirectoryEntry], path: String, recursive: Bool) -> String {
         if entries.isEmpty {
-            return "Directory is empty"
+            return "List(path: \(path), items: 0)"
         }
 
-        var output = "\(entries.count) items:\n\n"
+        var output = "List(path: \(path), items: \(entries.count))\n"
 
         for entry in entries {
             let type = entry.isDirectory ? "dir " : "file"

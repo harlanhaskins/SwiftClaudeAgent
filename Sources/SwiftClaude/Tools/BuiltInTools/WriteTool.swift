@@ -41,9 +41,10 @@ public struct WriteTool: Tool {
         // Write the content
         try input.content.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        // Count lines for confirmation message
+        // Generate result message
+        let fileName = fileURL.lastPathComponent
         let lineCount = input.content.components(separatedBy: .newlines).count
 
-        return ToolResult(content: "Successfully wrote \(lineCount) lines to \(input.filePath)")
+        return ToolResult(content: "Write(file: \(fileName), lines: \(lineCount))")
     }
 }
