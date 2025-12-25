@@ -236,13 +236,70 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 break
             }
 
-            await streamResponse(client: client, prompt: trimmed)
+            var currentPrompt = trimmed
+            while true {
+                enum TaskResult {
+                    case interrupted
+                    case completed
+                }
+
+                let promptToSend = currentPrompt
+
+                let result = await withTaskGroup(of: TaskResult.self) { group in
+                    group.addTask {
+                        let terminal = TerminalHandler()
+                        terminal.enableRawMode()
+                        defer { terminal.disableRawMode() }
+
+                        while !Task.isCancelled {
+                            if let char = terminal.readChar() {
+                                if char == 27 {
+                                    await client.cancel()
+                                    return .interrupted
+                                }
+                            }
+                            try? await Task.sleep(nanoseconds: 10_000_000)
+                        }
+                        return .completed
+                    }
+
+                    group.addTask {
+                        await streamResponse(client: client, prompt: promptToSend)
+                        return .completed
+                    }
+
+                    guard let firstResult = await group.next() else {
+                        return TaskResult.completed
+                    }
+
+                    group.cancelAll()
+                    return firstResult
+                }
+
+                if case .interrupted = result {
+                    print("\n\n\(ANSIColor.yellow.rawValue)⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):\(ANSIColor.reset.rawValue)")
+                    print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
+                    print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
+                    FileHandle.standardOutput.synchronizeFile()
+
+                    if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
+                        currentPrompt = currentPrompt + " " + additionalText
+                        print("\n\(ANSIColor.cyan.rawValue)📝 Continuing with updated prompt:\(ANSIColor.reset.rawValue) \(currentPrompt)")
+                        continue
+                    } else {
+                        print("\(ANSIColor.gray.rawValue)Query cancelled.\(ANSIColor.reset.rawValue)")
+                        break
+                    }
+                } else {
+                    break
+                }
+            }
         }
     }
 
     func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
         guard let client = await setupClient(options: options, mcpManager: mcpManager) else { return }
-        await streamResponse(client: client, prompt: prompt, interactive: false)
+        await streamResponse(client: client, prompt: prompt)
     }
     
     func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
@@ -287,89 +344,17 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func streamResponse(client: ClaudeClient, prompt: String, interactive: Bool = true) async {
-        var currentPrompt = prompt
+    func streamResponse(client: ClaudeClient, prompt: String) async {
+        print("\n", terminator: "")
+        FileHandle.standardOutput.synchronizeFile()
 
-        while true {
-            print("\n", terminator: "")
-            FileHandle.standardOutput.synchronizeFile()
+        var hasOutput = false
+        for await message in await client.query(prompt) {
+            displayMessage(message, hasOutput: &hasOutput)
+        }
 
-            enum TaskResult {
-                case escapePressed(hasOutput: Bool)
-                case streamComplete(hasOutput: Bool)
-            }
-
-            let promptToSend = currentPrompt
-
-            let result = await withTaskGroup(of: TaskResult.self) { group in
-                if interactive {
-                    group.addTask {
-                        let terminal = TerminalHandler()
-                        terminal.enableRawMode()
-                        defer { terminal.disableRawMode() }
-
-                        while !Task.isCancelled {
-                            if let char = terminal.readChar() {
-                                if char == 27 {
-                                    await client.cancel()
-                                    return .escapePressed(hasOutput: false)
-                                }
-                            }
-                            try? await Task.sleep(nanoseconds: 10_000_000)
-                        }
-                        return .streamComplete(hasOutput: false)
-                    }
-                }
-
-                group.addTask {
-                    var streamHasOutput = false
-                    for await message in await client.query(promptToSend) {
-                        displayMessage(message, hasOutput: &streamHasOutput)
-                    }
-                    return .streamComplete(hasOutput: streamHasOutput)
-                }
-
-                guard let firstResult = await group.next() else {
-                    return TaskResult.streamComplete(hasOutput: false)
-                }
-
-                group.cancelAll()
-                return firstResult
-            }
-
-            let hasOutput: Bool
-            let escapePressed: Bool
-
-            switch result {
-            case .escapePressed(let output):
-                hasOutput = output
-                escapePressed = true
-            case .streamComplete(let output):
-                hasOutput = output
-                escapePressed = false
-            }
-
-            if hasOutput {
-                print()
-            }
-
-            if interactive && escapePressed {
-                print("\n\n\(ANSIColor.yellow.rawValue)⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):\(ANSIColor.reset.rawValue)")
-                print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
-                print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
-                FileHandle.standardOutput.synchronizeFile()
-
-                if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    currentPrompt = currentPrompt + " " + additionalText
-                    print("\n\(ANSIColor.cyan.rawValue)📝 Continuing with updated prompt:\(ANSIColor.reset.rawValue) \(currentPrompt)")
-                    continue
-                } else {
-                    print("\(ANSIColor.gray.rawValue)Query cancelled.\(ANSIColor.reset.rawValue)")
-                    break
-                }
-            } else {
-                break
-            }
+        if hasOutput {
+            print()
         }
 
         print("", terminator: "")
