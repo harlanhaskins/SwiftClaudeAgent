@@ -75,6 +75,7 @@ actor InterruptionManager {
 // ANSI color codes
 enum ANSIColor: String {
     case reset = "\u{001B}[0m"
+    case bold = "\u{001B}[1m"
     case gray = "\u{001B}[90m"
     case cyan = "\u{001B}[36m"
     case green = "\u{001B}[32m"
@@ -207,22 +208,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         // Setup file tracking hooks
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
 
-        // Add hook to show ALL tool usage (including built-in tools like web_search)
-        await client.addHook(.onMessage) { (context: MessageContext) in
-            if case .assistant(let msg) = context.message {
-                for block in msg.content {
-                    if case .toolUse(let toolUse) = block {
-                        print("\n\(ANSIColor.yellow.rawValue)🔍 Claude wants to use tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
-                    }
-                }
-            }
-        }
-
-        // Also show when we're executing local tools
-        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
-            print("\(ANSIColor.yellow.rawValue)🔧 Executing: \(context.toolName)\(ANSIColor.reset.rawValue)")
-        }
-
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
         if !disableFileSafety {
             print("\(ANSIColor.gray.rawValue)File safety enabled: Files must be read before modification\(ANSIColor.reset.rawValue)")
@@ -267,22 +252,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         
         // Setup file tracking hooks
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
-
-        // Add hook to show ALL tool usage (including built-in tools like web_search)
-        await client.addHook(.onMessage) { (context: MessageContext) in
-            if case .assistant(let msg) = context.message {
-                for block in msg.content {
-                    if case .toolUse(let toolUse) = block {
-                        print("\n\(ANSIColor.yellow.rawValue)🔍 Claude wants to use tool: \(toolUse.name)\(ANSIColor.reset.rawValue)")
-                    }
-                }
-            }
-        }
-
-        // Also show when we're executing local tools
-        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
-            print("\(ANSIColor.yellow.rawValue)🔧 Executing: \(context.toolName)\(ANSIColor.reset.rawValue)")
-        }
 
         print("🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
 
@@ -457,16 +426,15 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
                 case .toolUse(let toolUse):
                     if !hasOutput {
-                        print() // New line after prompt
+                        print()
                         hasOutput = true
                     }
-                    // Format inputs as ToolName(param: value, param: value)
                     let inputDict = toolUse.input.toDictionary()
                     let params = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
-                    print("\n\(ANSIColor.yellow.rawValue)\(toolUse.name)(\(params))\(ANSIColor.reset.rawValue)")
+                    print("\n\(ANSIColor.bold.rawValue)\(toolUse.name)\(ANSIColor.reset.rawValue)(\(params))")
 
                 case .toolResult:
-                    break // Tool results are internal
+                    break
                 }
             }
 
