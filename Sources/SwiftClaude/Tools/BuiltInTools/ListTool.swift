@@ -3,7 +3,7 @@ import Foundation
 /// Tool for listing directory contents.
 ///
 /// The List tool allows Claude to browse filesystem directories.
-/// It supports recursive listing and showing hidden files.
+/// It supports depth-limited recursive listing and showing hidden files.
 ///
 /// # Tool Name
 /// Name is automatically derived from type: `ListTool` → `"List"`
@@ -11,7 +11,7 @@ import Foundation
 /// # Example
 /// ```swift
 /// let tool = ListTool()
-/// let input = ListToolInput(path: "/path/to/dir", recursive: true)
+/// let input = ListToolInput(path: "/path/to/dir", depth: 2)
 /// let result = try await tool.execute(input: input)
 /// ```
 public struct ListTool: Tool {
@@ -38,17 +38,19 @@ public struct ListTool: Tool {
             throw ToolError.invalidInput("Path is not a directory: \(input.path)")
         }
 
-        let recursive = input.recursive ?? false
+        let depth = input.depth
         let showHidden = input.showHidden ?? false
 
         // Collect entries
         var entries: [DirectoryEntry] = []
 
-        if recursive {
+        if let maxDepth = depth {
             entries = try listRecursive(
                 url: directoryURL,
                 showHidden: showHidden,
-                baseURL: directoryURL
+                baseURL: directoryURL,
+                currentDepth: 0,
+                maxDepth: maxDepth
             )
         } else {
             entries = try listDirectory(url: directoryURL, showHidden: showHidden)
@@ -64,7 +66,7 @@ public struct ListTool: Tool {
 
         // Format output
         let dirName = directoryURL.lastPathComponent.isEmpty ? directoryURL.path : directoryURL.lastPathComponent
-        let output = formatEntries(entries, path: dirName, recursive: recursive)
+        let output = formatEntries(entries, path: dirName, depth: depth)
         return ToolResult(content: output)
     }
 
@@ -97,40 +99,47 @@ public struct ListTool: Tool {
     private func listRecursive(
         url: URL,
         showHidden: Bool,
-        baseURL: URL
+        baseURL: URL,
+        currentDepth: Int,
+        maxDepth: Int
     ) throws -> [DirectoryEntry] {
         var entries: [DirectoryEntry] = []
 
-        let options: FileManager.DirectoryEnumerationOptions = showHidden ? [] : [.skipsHiddenFiles]
-        let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
-            options: options
-        )
+        // List current directory
+        let currentEntries = try listDirectory(url: url, showHidden: showHidden)
 
-        while let itemURL = enumerator?.nextObject() as? URL {
-            let resourceValues = try itemURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
-            let isDirectory = resourceValues.isDirectory ?? false
-            let fileSize = resourceValues.fileSize
-
+        for entry in currentEntries {
             // Get path relative to base
-            let relativePath = itemURL.path.replacingOccurrences(
+            let relativePath = entry.path.replacingOccurrences(
                 of: baseURL.path + "/",
                 with: ""
             )
 
             entries.append(DirectoryEntry(
                 name: relativePath,
-                path: itemURL.path,
-                isDirectory: isDirectory,
-                size: fileSize
+                path: entry.path,
+                isDirectory: entry.isDirectory,
+                size: entry.size
             ))
+
+            // Recurse into subdirectories if we haven't reached max depth
+            if entry.isDirectory && currentDepth < maxDepth {
+                let subdirURL = URL(fileURLWithPath: entry.path)
+                let subEntries = try listRecursive(
+                    url: subdirURL,
+                    showHidden: showHidden,
+                    baseURL: baseURL,
+                    currentDepth: currentDepth + 1,
+                    maxDepth: maxDepth
+                )
+                entries.append(contentsOf: subEntries)
+            }
         }
 
         return entries
     }
 
-    private func formatEntries(_ entries: [DirectoryEntry], path: String, recursive: Bool) -> String {
+    private func formatEntries(_ entries: [DirectoryEntry], path: String, depth: Int?) -> String {
         if entries.isEmpty {
             return "Directory is empty"
         }

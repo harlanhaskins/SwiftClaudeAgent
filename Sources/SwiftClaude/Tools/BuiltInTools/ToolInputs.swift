@@ -231,18 +231,18 @@ public struct GrepToolInput: Codable, Sendable, Equatable {
 
 public struct ListToolInput: Codable, Sendable, Equatable {
     public let path: String
-    public let recursive: Bool?
+    public let depth: Int?
     public let showHidden: Bool?
 
-    public init(path: String, recursive: Bool? = nil, showHidden: Bool? = nil) {
+    public init(path: String, depth: Int? = nil, showHidden: Bool? = nil) {
         self.path = path
-        self.recursive = recursive
+        self.depth = depth
         self.showHidden = showHidden
     }
 
     enum CodingKeys: String, CodingKey {
         case path
-        case recursive
+        case depth
         case showHidden = "show_hidden"
     }
 
@@ -251,7 +251,7 @@ public struct ListToolInput: Codable, Sendable, Equatable {
         .object(
             properties: [
                 "path": .string(description: "Directory path to list"),
-                "recursive": .boolean(description: "Recursively list subdirectories (default: false)"),
+                "depth": .integer(description: "How many levels deep to list subdirectories. Default (nil) lists only the specified directory. depth=1 includes immediate subdirectories, depth=2 goes two levels deep, etc. Use carefully - large depths can list many files."),
                 "show_hidden": .boolean(description: "Show hidden files (default: false)")
             ],
             required: ["path"]
