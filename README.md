@@ -17,7 +17,7 @@ A Swift SDK for building AI agents powered by Claude, with full support for stre
 - ✅ **Web Search** - Built-in web search via Claude API
 - ✅ **Hooks System** - Lifecycle hooks for logging, permissions, and observability
 - ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
-- 🚧 **MCP Integration** - Coming soon (custom tool servers)
+- ✅ **Query Interruption** - Press Esc to interrupt and extend prompts mid-query
 
 ## Installation
 
@@ -411,6 +411,40 @@ Alternatively, you can set the `ANTHROPIC_API_KEY` environment variable:
 export ANTHROPIC_API_KEY='your-api-key-here'
 swift run swift-claude "What is 2 + 2?"
 ```
+
+### Interactive Mode Features
+
+#### Query Interruption with Esc Key
+
+While a query is running, press **Esc** to interrupt it and append more text to your prompt:
+
+```bash
+swift run swift-claude -i
+
+You: Write a function to sort data
+
+🤖 Claude: Here's a function to sort data:
+[Press Esc]
+
+⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):
+Current prompt: Write a function to sort data
+Append: in Swift using generics with Comparable constraint
+
+📝 Continuing with updated prompt: Write a function to sort data in Swift using generics with Comparable constraint
+
+🤖 Claude: [Continues with enhanced prompt...]
+```
+
+**Use cases:**
+- Add forgotten details or constraints mid-query
+- Refine your request without retyping everything
+- Iteratively improve prompts as Claude responds
+- Press Enter alone after Esc to cancel the query
+
+**Platform support:**
+- ✅ macOS and Linux: Full support
+- ⚠️ Windows: Feature disabled (graceful fallback)
+
 
 ## Running Examples
 

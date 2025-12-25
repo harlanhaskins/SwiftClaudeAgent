@@ -8,6 +8,70 @@ import Glibc
 import Darwin
 #endif
 
+// Terminal handling for raw mode
+class TerminalHandler {
+    #if os(Linux) || os(macOS)
+    private var originalTermios: termios?
+    private let stdinFD = STDIN_FILENO
+    
+    func enableRawMode() {
+        #if os(Linux) || os(macOS)
+        var raw = termios()
+        tcgetattr(stdinFD, &raw)
+        originalTermios = raw
+        
+        // Disable canonical mode and echo
+        raw.c_lflag &= ~UInt32(ICANON | ECHO)
+        // Set minimum bytes to read and timeout
+        raw.c_cc.16 = 0  // VMIN
+        raw.c_cc.17 = 1  // VTIME (0.1 second)
+        
+        tcsetattr(stdinFD, TCSAFLUSH, &raw)
+        #endif
+    }
+    
+    func disableRawMode() {
+        #if os(Linux) || os(macOS)
+        if var original = originalTermios {
+            tcsetattr(stdinFD, TCSAFLUSH, &original)
+        }
+        #endif
+    }
+    
+    func readChar() -> UInt8? {
+        var c: UInt8 = 0
+        let result = read(stdinFD, &c, 1)
+        return result == 1 ? c : nil
+    }
+    #else
+    func enableRawMode() {}
+    func disableRawMode() {}
+    func readChar() -> UInt8? { return nil }
+    #endif
+}
+
+
+// Interruption state management
+actor InterruptionManager {
+    private var isInterrupted = false
+    private var appendedText: String?
+    
+    func interrupt(with text: String?) {
+        isInterrupted = true
+        appendedText = text
+    }
+    
+    func reset() {
+        isInterrupted = false
+        appendedText = nil
+    }
+    
+    func checkInterruption() -> (interrupted: Bool, appendedText: String?) {
+        return (isInterrupted, appendedText)
+    }
+}
+
+
 // ANSI color codes
 enum ANSIColor: String {
     case reset = "\u{001B}[0m"
@@ -268,18 +332,73 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func streamResponse(client: ClaudeClient, prompt: String) async {
-        print("\n🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
-
-        var hasOutput = false
-
-        for await message in await client.query(prompt) {
-            displayMessage(message, hasOutput: &hasOutput)
-        }
-
-        if hasOutput {
-            print() // Final newline
+        var currentPrompt = prompt
+        
+        // Keep retrying until no interruption occurs
+        while true {
+            print("\n🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
+            FileHandle.standardOutput.synchronizeFile()
+            
+            var hasOutput = false
+            var escapePressed = false
+            
+            // Start a task to monitor for Esc key
+            let monitorTask = Task {
+                let terminal = TerminalHandler()
+                terminal.enableRawMode()
+                defer { terminal.disableRawMode() }
+                
+                while !Task.isCancelled {
+                    if let char = terminal.readChar() {
+                        // Check for Esc key (ASCII 27)
+                        if char == 27 {
+                            await client.cancel()
+                            return true // Signal escape was pressed
+                        }
+                    }
+                    try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                }
+                return false
+            }
+            
+            // Stream the response
+            for await message in await client.query(currentPrompt) {
+                displayMessage(message, hasOutput: &hasOutput)
+            }
+            
+            // Get the result from monitor task
+            escapePressed = await monitorTask.value
+            
+            if hasOutput {
+                print() // Final newline
+            }
+            
+            // Check if Escape was pressed
+            if escapePressed {
+                // Prompt for additional text
+                print("\n\n\(ANSIColor.yellow.rawValue)⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):\(ANSIColor.reset.rawValue)")
+                print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
+                print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
+                FileHandle.standardOutput.synchronizeFile()
+                
+                if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Append the text and retry
+                    currentPrompt = currentPrompt + " " + additionalText
+                    print("\n\(ANSIColor.cyan.rawValue)📝 Continuing with updated prompt:\(ANSIColor.reset.rawValue) \(currentPrompt)")
+                    continue
+                } else {
+                    print("\(ANSIColor.gray.rawValue)Query cancelled.\(ANSIColor.reset.rawValue)")
+                    break
+                }
+            } else {
+                // Completed without interruption
+                break
+            }
         }
     }
+
+
+
 
     func displayMessage(_ message: Message, hasOutput: inout Bool) {
         switch message {
