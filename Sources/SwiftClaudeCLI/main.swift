@@ -193,20 +193,22 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+    func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> ClaudeClient? {
         let client: ClaudeClient
         do {
             client = try await ClaudeClient(options: options, mcpManager: mcpManager)
         } catch {
             print("\(ANSIColor.red.rawValue)Error initializing client: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
-            return
+            return nil
         }
 
-        // Create file tracker for safety checks
         let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
-        
-        // Setup file tracking hooks
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
+        return client
+    }
+
+    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+        guard let client = await setupClient(options: options, mcpManager: mcpManager) else { return }
 
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
         if !disableFileSafety {
@@ -239,31 +241,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
-        let client: ClaudeClient
-        do {
-            client = try await ClaudeClient(options: options, mcpManager: mcpManager)
-        } catch {
-            print("\(ANSIColor.red.rawValue)Error initializing client: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
-            return
-        }
-
-        // Create file tracker for safety checks
-        let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
-        
-        // Setup file tracking hooks
-        await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
-
-        print("", terminator: "")
-
-        var hasOutput = false
-
-        for await message in await client.query(prompt) {
-            displayMessage(message, hasOutput: &hasOutput)
-        }
-
-        if hasOutput {
-            print() // Final newline
-        }
+        guard let client = await setupClient(options: options, mcpManager: mcpManager) else { return }
+        await streamResponse(client: client, prompt: prompt, interactive: false)
     }
     
     func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
@@ -308,44 +287,40 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func streamResponse(client: ClaudeClient, prompt: String) async {
+    func streamResponse(client: ClaudeClient, prompt: String, interactive: Bool = true) async {
         var currentPrompt = prompt
 
-        // Keep retrying until no interruption occurs
         while true {
             print("\n", terminator: "")
             FileHandle.standardOutput.synchronizeFile()
 
-            // Use a task group to run monitoring and streaming concurrently
             enum TaskResult {
                 case escapePressed(hasOutput: Bool)
                 case streamComplete(hasOutput: Bool)
             }
 
-            // Capture immutable copies for task group
             let promptToSend = currentPrompt
 
             let result = await withTaskGroup(of: TaskResult.self) { group in
-                // Monitor task - watches for Esc key
-                group.addTask {
-                    let terminal = TerminalHandler()
-                    terminal.enableRawMode()
-                    defer { terminal.disableRawMode() }
+                if interactive {
+                    group.addTask {
+                        let terminal = TerminalHandler()
+                        terminal.enableRawMode()
+                        defer { terminal.disableRawMode() }
 
-                    while !Task.isCancelled {
-                        if let char = terminal.readChar() {
-                            // Check for Esc key (ASCII 27)
-                            if char == 27 {
-                                await client.cancel()
-                                return .escapePressed(hasOutput: false)
+                        while !Task.isCancelled {
+                            if let char = terminal.readChar() {
+                                if char == 27 {
+                                    await client.cancel()
+                                    return .escapePressed(hasOutput: false)
+                                }
                             }
+                            try? await Task.sleep(nanoseconds: 10_000_000)
                         }
-                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                        return .streamComplete(hasOutput: false)
                     }
-                    return .streamComplete(hasOutput: false) // Cancelled, doesn't matter
                 }
 
-                // Streaming task - processes the query response
                 group.addTask {
                     var streamHasOutput = false
                     for await message in await client.query(promptToSend) {
@@ -354,14 +329,11 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     return .streamComplete(hasOutput: streamHasOutput)
                 }
 
-                // Wait for first task to complete (either Esc or stream finished)
                 guard let firstResult = await group.next() else {
                     return TaskResult.streamComplete(hasOutput: false)
                 }
 
-                // Cancel the other task
                 group.cancelAll()
-
                 return firstResult
             }
 
@@ -378,19 +350,16 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             }
 
             if hasOutput {
-                print() // Final newline
+                print()
             }
 
-            // Check if Escape was pressed
-            if escapePressed {
-                // Prompt for additional text
+            if interactive && escapePressed {
                 print("\n\n\(ANSIColor.yellow.rawValue)⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):\(ANSIColor.reset.rawValue)")
                 print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
                 print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
                 FileHandle.standardOutput.synchronizeFile()
 
                 if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    // Append the text and retry
                     currentPrompt = currentPrompt + " " + additionalText
                     print("\n\(ANSIColor.cyan.rawValue)📝 Continuing with updated prompt:\(ANSIColor.reset.rawValue) \(currentPrompt)")
                     continue
@@ -399,10 +368,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     break
                 }
             } else {
-                // Completed without interruption
                 break
             }
         }
+
+        print("", terminator: "")
+        FileHandle.standardOutput.synchronizeFile()
     }
 
 
