@@ -194,24 +194,36 @@ public struct UpdateTool: Tool {
         }
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        // Generate result message (convert back to 1-based for display)
+        // Generate result message with new format
+        let fileName = fileURL.lastPathComponent
         let netChange = totalLinesAdded - totalLinesRemoved
-        let diffDescription = netChange >= 0 ? "+\(netChange)" : "\(netChange)"
+        let netSign = netChange >= 0 ? "+" : ""
+
+        var output = ""
 
         if input.replacements.count == 1 {
             let rep = input.replacements[0]
-            return ToolResult(content: """
-                Successfully updated \(input.filePath)
-                Lines \(rep.startLine)-\(rep.endLine - 1) replaced with \(totalLinesAdded) new lines (\(diffDescription) net change)
-                File now has \(currentLines.count) lines
-                """)
+            let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
+            output += "Update(file: \(fileName), lines: \(rangeDesc) → \(totalLinesAdded), net: \(netSign)\(netChange))\n"
+
+            // Show the new lines that were added
+            let startLineNum = rep.startLine
+            let newLines = currentLines[(startLineNum - 1)..<min(startLineNum - 1 + totalLinesAdded, currentLines.count)]
+            for (index, line) in newLines.enumerated() {
+                let lineNum = startLineNum + index
+                output += "  \(lineNum): \(line)\n"
+            }
         } else {
-            return ToolResult(content: """
-                Successfully updated \(input.filePath)
-                Applied \(input.replacements.count) replacements: removed \(totalLinesRemoved) lines, added \(totalLinesAdded) lines (\(diffDescription) net change)
-                File now has \(currentLines.count) lines
-                """)
+            output += "Update(file: \(fileName), replacements: \(input.replacements.count), -\(totalLinesRemoved) +\(totalLinesAdded), net: \(netSign)\(netChange))\n"
+
+            // For multiple replacements, show a summary of each
+            for rep in input.replacements {
+                let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
+                output += "  • Lines \(rangeDesc) updated\n"
+            }
         }
+
+        return ToolResult(content: output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     // MARK: - Helper Methods

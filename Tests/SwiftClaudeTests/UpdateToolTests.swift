@@ -577,7 +577,7 @@ struct UpdateToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
-        #expect(result.content.contains("3 replacements"))
+        #expect(result.content.contains("replacements: 3"))
 
         let updatedContent = try readFile(filePath)
         #expect(updatedContent == "FIRST\nLine 1\nMIDDLE\nLine 3\nLAST\n")
@@ -815,8 +815,7 @@ struct UpdateToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
-        #expect(result.content.contains("+2"))  // Net change: +2-1+1 = +2
-        #expect(result.content.contains("7 lines"))  // Original 5 + 2 = 7
+        #expect(result.content.contains("net: +2"))  // Net change: +2-1+1 = +2
 
         let updatedContent = try readFile(filePath)
         let lines = updatedContent.split(separator: "\n", omittingEmptySubsequences: false)
