@@ -100,9 +100,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     @Option(name: .shortAndLong, help: "Working directory for Bash tool")
     var workingDirectory: String?
-    
+
     @Flag(name: .long, help: "Disable file safety checks (allow writes without reads)")
     var disableFileSafety = false
+
+    @Flag(name: .long, help: "Skip the built-in system prompt")
+    var noSystemPrompt = false
 
     @Argument(help: "The prompt to send to Claude (optional in interactive mode)")
     var prompt: [String] = []
@@ -135,34 +138,39 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             ?? ProcessInfo.processInfo.environment["USERNAME"]
             ?? "unknown"
 
-        let systemPrompt = """
-        You are running in a command-line interface (CLI) environment. You have access to tools that allow you to interact with the local filesystem and execute commands.
+        let systemPrompt: String
+        if noSystemPrompt {
+            systemPrompt = ""
+        } else {
+            systemPrompt = """
+            You are running in a command-line interface (CLI) environment. You have access to tools that allow you to interact with the local filesystem and execute commands.
 
-        ## Execution Context
-        - Current date: \(dateString)
-        - User: \(userName)
-        - You are executing on the user's local machine
-        - You have access to the current working directory: \(workingDir?.path ?? FileManager.default.currentDirectoryPath)
-        - File operations will directly modify files on the user's system
-        - Be careful and precise with file modifications
+            ## Execution Context
+            - Current date: \(dateString)
+            - User: \(userName)
+            - You are executing on the user's local machine
+            - You have access to the current working directory: \(workingDir?.path ?? FileManager.default.currentDirectoryPath)
+            - File operations will directly modify files on the user's system
+            - Be careful and precise with file modifications
 
-        ## File Modification Guidelines
-        IMPORTANT: When modifying files, ALWAYS prefer using the Update tool to make targeted changes rather than using the Write tool to replace entire file contents.
+            ## File Modification Guidelines
+            IMPORTANT: When modifying files, ALWAYS prefer using the Update tool to make targeted changes rather than using the Write tool to replace entire file contents.
 
-        - **Use Update tool**: For modifying existing files (changing specific lines, adding/removing sections, etc.)
-        - **Use Write tool**: Only when creating new files or when you genuinely need to replace the entire file
+            - **Use Update tool**: For modifying existing files (changing specific lines, adding/removing sections, etc.)
+            - **Use Write tool**: Only when creating new files or when you genuinely need to replace the entire file
 
-        Benefits of using Update:
-        - More efficient (only sends/processes the changed portions)
-        - Safer (less risk of accidentally losing content)
-        - Clearer to the user what exactly changed
-        - Better for version control (smaller, more focused diffs)
+            Benefits of using Update:
+            - More efficient (only sends/processes the changed portions)
+            - Safer (less risk of accidentally losing content)
+            - Clearer to the user what exactly changed
+            - Better for version control (smaller, more focused diffs)
 
-        When you need to modify a file:
-        1. First read the file to understand its current contents
-        2. Use the Update tool to make specific, targeted changes
-        3. Only use Write if you're creating a new file or the changes are so extensive that a full rewrite is clearer
-        """
+            When you need to modify a file:
+            1. First read the file to understand its current contents
+            2. Use the Update tool to make specific, targeted changes
+            3. Only use Write if you're creating a new file or the changes are so extensive that a full rewrite is clearer
+            """
+        }
 
         let options = ClaudeAgentOptions(
             systemPrompt: systemPrompt,
@@ -333,46 +341,77 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     func streamResponse(client: ClaudeClient, prompt: String) async {
         var currentPrompt = prompt
-        
+
         // Keep retrying until no interruption occurs
         while true {
             print("\n🤖 \(ANSIColor.cyan.rawValue)Claude:\(ANSIColor.reset.rawValue) ", terminator: "")
             FileHandle.standardOutput.synchronizeFile()
-            
-            var hasOutput = false
-            var escapePressed = false
-            
-            // Start a task to monitor for Esc key
-            let monitorTask = Task {
-                let terminal = TerminalHandler()
-                terminal.enableRawMode()
-                defer { terminal.disableRawMode() }
-                
-                while !Task.isCancelled {
-                    if let char = terminal.readChar() {
-                        // Check for Esc key (ASCII 27)
-                        if char == 27 {
-                            await client.cancel()
-                            return true // Signal escape was pressed
+
+            // Use a task group to run monitoring and streaming concurrently
+            enum TaskResult {
+                case escapePressed(hasOutput: Bool)
+                case streamComplete(hasOutput: Bool)
+            }
+
+            // Capture immutable copies for task group
+            let promptToSend = currentPrompt
+
+            let result = await withTaskGroup(of: TaskResult.self) { group in
+                // Monitor task - watches for Esc key
+                group.addTask {
+                    let terminal = TerminalHandler()
+                    terminal.enableRawMode()
+                    defer { terminal.disableRawMode() }
+
+                    while !Task.isCancelled {
+                        if let char = terminal.readChar() {
+                            // Check for Esc key (ASCII 27)
+                            if char == 27 {
+                                await client.cancel()
+                                return .escapePressed(hasOutput: false)
+                            }
                         }
+                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
                     }
-                    try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    return .streamComplete(hasOutput: false) // Cancelled, doesn't matter
                 }
-                return false
+
+                // Streaming task - processes the query response
+                group.addTask {
+                    var streamHasOutput = false
+                    for await message in await client.query(promptToSend) {
+                        displayMessage(message, hasOutput: &streamHasOutput)
+                    }
+                    return .streamComplete(hasOutput: streamHasOutput)
+                }
+
+                // Wait for first task to complete (either Esc or stream finished)
+                guard let firstResult = await group.next() else {
+                    return TaskResult.streamComplete(hasOutput: false)
+                }
+
+                // Cancel the other task
+                group.cancelAll()
+
+                return firstResult
             }
-            
-            // Stream the response
-            for await message in await client.query(currentPrompt) {
-                displayMessage(message, hasOutput: &hasOutput)
+
+            let hasOutput: Bool
+            let escapePressed: Bool
+
+            switch result {
+            case .escapePressed(let output):
+                hasOutput = output
+                escapePressed = true
+            case .streamComplete(let output):
+                hasOutput = output
+                escapePressed = false
             }
-            
-            // Get the result from monitor task
-            escapePressed = await monitorTask.value
-            
+
             if hasOutput {
                 print() // Final newline
             }
-            
+
             // Check if Escape was pressed
             if escapePressed {
                 // Prompt for additional text
@@ -380,7 +419,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
                 print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
                 FileHandle.standardOutput.synchronizeFile()
-                
+
                 if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
                     // Append the text and retry
                     currentPrompt = currentPrompt + " " + additionalText
