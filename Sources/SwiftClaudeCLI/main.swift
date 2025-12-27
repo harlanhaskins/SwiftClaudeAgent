@@ -8,6 +8,11 @@ import Glibc
 import Darwin
 #endif
 
+// Helper to flush stdout
+func flushStdout() {
+    try? FileHandle.standardOutput.synchronize()
+}
+
 // Terminal handling for raw mode
 class TerminalHandler {
     #if os(Linux) || os(macOS)
@@ -55,19 +60,32 @@ class TerminalHandler {
 actor InterruptionManager {
     private var isInterrupted = false
     private var appendedText: String?
-    
+
     func interrupt(with text: String?) {
         isInterrupted = true
         appendedText = text
     }
-    
+
     func reset() {
         isInterrupted = false
         appendedText = nil
     }
-    
+
     func checkInterruption() -> (interrupted: Bool, appendedText: String?) {
         return (isInterrupted, appendedText)
+    }
+}
+
+// Tool output management to prevent interleaving
+actor ToolOutputManager {
+    private var pendingToolCalls: [String: (displayLine: String, startTime: Date)] = [:]
+
+    func recordToolCall(id: String, displayLine: String, startTime: Date) {
+        pendingToolCalls[id] = (displayLine, startTime)
+    }
+
+    func consumeToolCall(id: String) -> (displayLine: String, startTime: Date)? {
+        return pendingToolCalls.removeValue(forKey: id)
     }
 }
 
@@ -181,9 +199,6 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Load MCP configuration if available
         let mcpManager = try? MCPManager.loadDefault()
-        if mcpManager != nil {
-            print("\(ANSIColor.green.rawValue)✓ MCP configuration loaded\(ANSIColor.reset.rawValue)")
-        }
 
         // Run in appropriate mode
         if interactive {
@@ -193,7 +208,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> ClaudeClient? {
+    func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> (ClaudeClient, ToolOutputManager)? {
         let client: ClaudeClient
         do {
             client = try await ClaudeClient(options: options, mcpManager: mcpManager)
@@ -205,30 +220,96 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         let fileTracker = FileTracker(requireReadBeforeWrite: !disableFileSafety)
         await setupFileTrackingHooks(client: client, fileTracker: fileTracker)
 
-        await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
+        let toolOutputManager = ToolOutputManager()
+
+        // Print tool start immediately before execution
+        await client.addHook(.beforeToolExecution) { [toolOutputManager] (context: BeforeToolExecutionContext) in
             guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
                 return
             }
-            let params = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
-            print("\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(params))")
+
+            // Filter out noisy parameters for certain tools
+            let filteredParams: String
+            if context.toolName == "Update" || context.toolName == "Write" {
+                // Only show file_path for Update/Write, not the content
+                let relevantParams = inputDict.filter { key, _ in
+                    key == "file_path"
+                }
+                filteredParams = relevantParams.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            } else {
+                filteredParams = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            }
+
+            let displayLine = "\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(filteredParams))"
+
+            // Print immediately (with newline to force flush on line-buffered terminals)
+            print(displayLine)
+
+            // Record start time
+            let startTime = Date()
+            await toolOutputManager.recordToolCall(id: context.toolUseId, displayLine: displayLine, startTime: startTime)
         }
 
-        return client
+        // Print tool result immediately after execution
+        await client.addHook(.afterToolExecution) { [toolOutputManager] (context: AfterToolExecutionContext) in
+            guard let toolInfo = await toolOutputManager.consumeToolCall(id: context.toolUseId) else {
+                return
+            }
+
+            let elapsed = Date().timeIntervalSince(toolInfo.startTime)
+            let resultText = context.result.content
+
+            // Extract exit code for Bash commands
+            var exitCode: Int?
+            var displayText = resultText
+            if let lastLineEnd = resultText.lastIndex(of: "\n"),
+               resultText[lastLineEnd...].hasPrefix("\nExit code: "),
+               let code = Int(resultText[resultText.index(after: lastLineEnd)...].dropFirst("Exit code: ".count)) {
+                exitCode = code
+                displayText = String(resultText[..<lastLineEnd])
+            }
+
+            // Format timing and status
+            var statusInfo = " \(elapsed.formatted(.number.precision(.fractionLength(2))))s"
+            if let code = exitCode {
+                let codeColor = code == 0 ? ANSIColor.green.rawValue : ANSIColor.red.rawValue
+                statusInfo += " \(codeColor)[\(code)]\(ANSIColor.reset.rawValue)"
+            }
+
+            // Print result
+            let lines = displayText.split(separator: "\n", omittingEmptySubsequences: false)
+            if context.result.isError {
+                print("  \(ANSIColor.red.rawValue)→\(statusInfo) Error: \(lines.first ?? "")\(ANSIColor.reset.rawValue)")
+                for line in lines.dropFirst().prefix(19) {
+                    print("    \(line)")
+                }
+            } else {
+                for (index, line) in lines.prefix(20).enumerated() {
+                    if index == 0 && !line.isEmpty {
+                        print("  \(ANSIColor.green.rawValue)→\(statusInfo)\(ANSIColor.reset.rawValue) \(line)")
+                    } else {
+                        print("    \(line)")
+                    }
+                }
+            }
+            if lines.count > 20 {
+                print("    ... (\(lines.count - 20) more lines)")
+            }
+        }
+
+        return (client, toolOutputManager)
     }
 
     func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
-        guard let client = await setupClient(options: options, mcpManager: mcpManager) else { return }
+        guard let (client, toolOutputManager) = await setupClient(options: options, mcpManager: mcpManager) else { return }
 
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
-        if !disableFileSafety {
-            print("\(ANSIColor.gray.rawValue)File safety enabled: Files must be read before modification\(ANSIColor.reset.rawValue)")
-        }
         print("\(ANSIColor.gray.rawValue)Type 'exit' or 'quit' to end the session\(ANSIColor.reset.rawValue)\n")
 
         // Handle initial prompt if provided
         if let initial = initialPrompt {
             print("\(ANSIColor.green.rawValue)You:\(ANSIColor.reset.rawValue) \(initial)")
-            await streamResponse(client: client, prompt: initial)
+            await streamResponse(client: client, prompt: initial, toolOutputManager: toolOutputManager)
         }
 
         // Interactive loop
@@ -273,7 +354,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     }
 
                     group.addTask {
-                        await streamResponse(client: client, prompt: promptToSend)
+                        await streamResponse(client: client, prompt: promptToSend, toolOutputManager: toolOutputManager)
                         return .completed
                     }
 
@@ -307,8 +388,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
-        guard let client = await setupClient(options: options, mcpManager: mcpManager) else { return }
-        await streamResponse(client: client, prompt: prompt)
+        guard let (client, toolOutputManager) = await setupClient(options: options, mcpManager: mcpManager) else { return }
+        await streamResponse(client: client, prompt: prompt, toolOutputManager: toolOutputManager)
     }
     
     func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
@@ -353,13 +434,14 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func streamResponse(client: ClaudeClient, prompt: String) async {
+    func streamResponse(client: ClaudeClient, prompt: String, toolOutputManager: ToolOutputManager) async {
         print("\n", terminator: "")
         FileHandle.standardOutput.synchronizeFile()
 
         var hasOutput = false
+
         for await message in await client.query(prompt) {
-            displayMessage(message, hasOutput: &hasOutput)
+            await displayMessage(message, hasOutput: &hasOutput, toolOutputManager: toolOutputManager)
         }
 
         if hasOutput {
@@ -370,10 +452,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         FileHandle.standardOutput.synchronizeFile()
     }
 
-
-
-
-    func displayMessage(_ message: Message, hasOutput: inout Bool) {
+    func displayMessage(_ message: Message, hasOutput: inout Bool, toolOutputManager: ToolOutputManager) async {
         switch message {
         case .assistant(let msg):
             for block in msg.content {
@@ -400,35 +479,13 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 }
             }
 
-        case .result(let resultMsg):
+        case .result:
             if !hasOutput {
                 print() // New line after prompt
                 hasOutput = true
             }
-
-            for block in resultMsg.content {
-                if case .text(let text) = block {
-                    // Print tool result with indentation
-                    let lines = text.text.split(separator: "\n", omittingEmptySubsequences: false)
-                    if resultMsg.isError {
-                        print("  \(ANSIColor.red.rawValue)→ Error: \(lines.first ?? "")\(ANSIColor.reset.rawValue)")
-                        for line in lines.dropFirst().prefix(19) {
-                            print("    \(line)")
-                        }
-                    } else {
-                        for (index, line) in lines.prefix(20).enumerated() {
-                            if index == 0 && !line.isEmpty {
-                                print("  \(ANSIColor.green.rawValue)→\(ANSIColor.reset.rawValue) \(line)")
-                            } else {
-                                print("  \(line)")
-                            }
-                        }
-                    }
-                    if lines.count > 20 {
-                        print("  ... (\(lines.count - 20) more lines)")
-                    }
-                }
-            }
+            // Tool results are now printed in the afterToolExecution hook
+            // This message is just for the conversation history
 
         case .user, .system:
             break // Don't print these

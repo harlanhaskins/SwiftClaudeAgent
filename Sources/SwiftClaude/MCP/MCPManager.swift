@@ -55,7 +55,6 @@ public actor MCPManager {
             do {
                 try await client.start()
                 clients[serverName] = client
-                print("✓ Started MCP server: \(serverName)")
             } catch {
                 print("✗ Failed to start MCP server \(serverName): \(error)")
                 // Continue with other servers even if one fails
@@ -92,8 +91,6 @@ public actor MCPManager {
                     let tool = MCPTool(definition: definition, client: client)
                     allTools.append(tool)
                 }
-
-                print("✓ Loaded \(definitions.count) tools from MCP server: \(serverName)")
             } catch {
                 print("✗ Failed to list tools from \(serverName): \(error.localizedDescription)")
                 // Continue with other servers even if one fails

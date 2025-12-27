@@ -44,46 +44,12 @@ public actor ClaudeClient {
     // MARK: - Initialization
 
     public init(options: ClaudeAgentOptions = .default, tools: Tools? = nil, mcpManager: MCPManager? = nil) async throws {
-        self.options = options
-        self.apiClient = AnthropicAPIClient(apiKey: options.apiKey)
-        self.mcpManager = mcpManager
-
-        // Start MCP servers if provided
-        if let mcpManager = mcpManager {
-            try await mcpManager.start()
-        }
-
-        // Create or use provided tools, combining with MCP tools
-        if let providedTools = tools {
-            self.tools = providedTools
-        } else {
-            // Get MCP tools if available
-            var allTools: [any Tool] = []
-
-            if let mcpManager = mcpManager {
-                let mcpTools = try await mcpManager.tools()
-                allTools.append(contentsOf: mcpTools)
-            }
-
-            // Add built-in tools
-            if let workingDir = options.workingDirectory {
-                let builtInTools = Tools(registerBuiltIns: true, workingDirectory: workingDir)
-                for toolName in builtInTools.toolNames {
-                    if let tool = builtInTools.tool(named: toolName) {
-                        allTools.append(tool)
-                    }
-                }
-            } else {
-                for toolName in Tools.shared.toolNames {
-                    if let tool = Tools.shared.tool(named: toolName) {
-                        allTools.append(tool)
-                    }
-                }
-            }
-
-            // Create combined tools instance using the array-based initializer
-            self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.name, $0) }))
-        }
+        try await self.init(
+            options: options,
+            apiClient: AnthropicAPIClient(apiKey: options.apiKey),
+            tools: tools,
+            mcpManager: mcpManager
+        )
     }
 
     /// Initialize with a custom API client (useful for testing)
@@ -125,7 +91,7 @@ public actor ClaudeClient {
                 }
             }
 
-            // Create combined tools instance using the array-based initializer
+            // Create combined tools instance
             self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.name, $0) }))
         }
     }

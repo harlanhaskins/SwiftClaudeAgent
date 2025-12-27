@@ -107,11 +107,11 @@ public struct BashTool: Tool {
                         output += stderr
                     }
 
-                    // Check exit status
-                    if process.terminationStatus != 0 {
-                        // Include exit code in output but don't fail
-                        output += "\n[Process exited with code \(process.terminationStatus)]"
+                    // Always include exit code (for parsing and display)
+                    if !output.isEmpty && !output.hasSuffix("\n") {
+                        output += "\n"
                     }
+                    output += "Exit code: \(process.terminationStatus)"
 
                     continuation.resume(returning: output)
                 }
