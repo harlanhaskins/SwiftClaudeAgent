@@ -74,6 +74,15 @@ public protocol Tool: Sendable {
     /// - Returns: The result of executing the tool
     /// - Throws: ToolError if execution fails
     func execute(input: Input) async throws -> ToolResult
+
+    /// Format a concise one-line summary of a tool call for display.
+    ///
+    /// This is used to show tool calls in a compact format like `Read(/path/to/file.swift)`.
+    /// The default implementation returns an empty string.
+    ///
+    /// - Parameter input: The decoded input parameters
+    /// - Returns: A concise summary string (without the tool name)
+    func formatCallSummary(input: Input) -> String
 }
 
 // MARK: - Default Implementation
@@ -93,6 +102,32 @@ extension Tool {
         }
         return typeName
     }
+
+    /// Default implementation: returns empty string
+    public func formatCallSummary(input: Input) -> String {
+        return ""
+    }
+}
+
+// MARK: - Display Helpers
+
+/// Truncate a string for display, adding ellipsis if needed
+public func truncateForDisplay(_ str: String, maxLength: Int) -> String {
+    guard str.count > maxLength else { return str }
+    return String(str.prefix(maxLength - 1)) + "…"
+}
+
+/// Truncate a file path, keeping the filename and some context
+public func truncatePathForDisplay(_ path: String, maxLength: Int = 50) -> String {
+    guard path.count > maxLength else { return path }
+    let components = path.split(separator: "/")
+    if components.count <= 3 {
+        return path
+    }
+    // Keep first component, ellipsis, and last 2 components
+    let first = components.first ?? ""
+    let last = components.suffix(2).joined(separator: "/")
+    return "/\(first)/…/\(last)"
 }
 
 // MARK: - Tool Result

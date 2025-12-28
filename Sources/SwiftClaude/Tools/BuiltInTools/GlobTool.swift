@@ -35,6 +35,13 @@ public struct GlobTool: Tool {
     /// Maximum number of files to return
     private static let maxResults = OutputLimiter.defaultMaxItems
 
+    public func formatCallSummary(input: GlobToolInput) -> String {
+        if let path = input.path, !path.isEmpty {
+            return "\(input.pattern) in \(truncatePathForDisplay(path))"
+        }
+        return input.pattern
+    }
+
     public func execute(input: GlobToolInput) async throws -> ToolResult {
         let searchPath = input.path ?? FileManager.default.currentDirectoryPath
 

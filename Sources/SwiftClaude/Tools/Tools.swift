@@ -178,4 +178,27 @@ public final class Tools: Sendable {
         let input = try decoder.decode(T.Input.self, from: inputData)
         return try await tool.execute(input: input)
     }
+
+    // MARK: - Display
+
+    /// Format a concise summary of a tool call for display
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - inputData: JSON-encoded input data
+    /// - Returns: A concise summary string (without the tool name), or empty string on failure
+    public func formatCallSummary(toolName: String, inputData: Data) -> String {
+        guard let tool = tools[toolName] else {
+            return ""
+        }
+        return _formatCallSummaryWithConcreteTool(tool, inputData: inputData)
+    }
+
+    /// Helper function to format with concrete tool type
+    private func _formatCallSummaryWithConcreteTool<T: Tool>(_ tool: T, inputData: Data) -> String {
+        let decoder = JSONDecoder()
+        guard let input = try? decoder.decode(T.Input.self, from: inputData) else {
+            return ""
+        }
+        return tool.formatCallSummary(input: input)
+    }
 }

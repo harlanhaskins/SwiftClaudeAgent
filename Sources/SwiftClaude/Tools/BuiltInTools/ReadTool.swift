@@ -31,6 +31,10 @@ public struct ReadTool: Tool {
 
     public init() {}
 
+    public func formatCallSummary(input: ReadToolInput) -> String {
+        truncatePathForDisplay(input.filePath)
+    }
+
     public func execute(input: ReadToolInput) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: input.filePath)
 

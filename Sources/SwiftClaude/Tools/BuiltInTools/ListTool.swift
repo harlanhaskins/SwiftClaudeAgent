@@ -28,6 +28,10 @@ public struct ListTool: Tool {
 
     public init() {}
 
+    public func formatCallSummary(input: ListToolInput) -> String {
+        truncatePathForDisplay(input.path)
+    }
+
     public func execute(input: ListToolInput) async throws -> ToolResult {
         let directoryURL = URL(fileURLWithPath: input.path)
 

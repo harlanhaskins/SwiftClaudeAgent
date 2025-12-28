@@ -41,6 +41,10 @@ public struct BashTool: Tool {
     /// Maximum output size in bytes
     private static let maxOutputBytes = OutputLimiter.defaultMaxBytes
 
+    public func formatCallSummary(input: BashToolInput) -> String {
+        truncateForDisplay(input.command, maxLength: 60)
+    }
+
     public func execute(input: BashToolInput) async throws -> ToolResult {
         // Extract timeout (in milliseconds, convert to seconds)
         let timeout = input.timeout.map { TimeInterval($0) / 1000.0 } ?? defaultTimeout

@@ -188,6 +188,25 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             1. First read the file to understand its current contents
             2. Use the Update tool to make specific, targeted changes
             3. Only use Write if you're creating a new file or the changes are so extensive that a full rewrite is clearer
+
+            ## Sub-Agent Tool
+            You have access to the SubAgent tool for delegating complex tasks. Use sub-agents when:
+
+            - **Long-running research**: Tasks that need many tool calls (e.g., "find all usages of X across the codebase")
+            - **Parallel independent work**: Multiple unrelated tasks that can run simultaneously
+            - **Focused context**: Work that benefits from isolated conversation history
+            - **Complex analysis**: Deep dives that would clutter the main conversation
+
+            Examples of good sub-agent tasks:
+            - "Search the codebase for all API endpoints and document them"
+            - "Analyze the test coverage in the auth module"
+            - "Find and list all TODO comments in the project"
+            - Running 2-3 parallel searches across different parts of the codebase
+
+            Do NOT use sub-agents for:
+            - Simple file reads or single tool calls
+            - Tasks that need to interact with or modify the main conversation
+            - Quick lookups that take only 1-2 tool calls
             """
         }
 
@@ -212,6 +231,34 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         // Create custom tools set without Grep and List tools
         let workingDir = options.workingDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
+        // Tools available to sub-agents (core file/command tools)
+        let subAgentTools = Tools {
+            ReadTool()
+            WriteTool()
+            UpdateTool()
+            BashTool(workingDirectory: workingDir)
+            GlobTool()
+            FetchTool()
+            WebSearchTool()
+        }
+
+        // Create SubAgent tool with output callback for indented tool calls
+        let subAgentTool = SubAgentTool(
+            apiKey: options.apiKey,
+            tools: subAgentTools,
+            outputCallback: { [subAgentTools] output in
+                switch output {
+                case .toolCall(let toolName, let parameters):
+                    // Format using the tool's own formatting (convert parameters to JSON data)
+                    let jsonData = (try? JSONSerialization.data(withJSONObject: parameters)) ?? Data()
+                    let summary = subAgentTools.formatCallSummary(toolName: toolName, inputData: jsonData)
+                    print("    \(ANSIColor.gray.rawValue)\(toolName)(\(summary))\(ANSIColor.reset.rawValue)")
+                default:
+                    break  // Only show tool calls, not start/complete events
+                }
+            }
+        )
+
         let tools = Tools {
             ReadTool()
             WriteTool()
@@ -220,6 +267,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             GlobTool()
             FetchTool()
             WebSearchTool()
+            subAgentTool
         }
 
         let client: ClaudeClient
@@ -236,26 +284,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         let toolOutputManager = ToolOutputManager()
 
         // Print tool start immediately before execution
-        await client.addHook(.beforeToolExecution) { [toolOutputManager] (context: BeforeToolExecutionContext) in
-            guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
-                return
-            }
+        await client.addHook(.beforeToolExecution) { [tools, toolOutputManager] (context: BeforeToolExecutionContext) in
+            // Format tool call as a concise one-liner using the tool's own formatting
+            let summary = tools.formatCallSummary(toolName: context.toolName, inputData: context.input)
+            let displayLine = "\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(summary))"
 
-            // Filter out noisy parameters for certain tools
-            let filteredParams: String
-            if context.toolName == "Update" || context.toolName == "Write" {
-                // Only show file_path for Update/Write, not the content
-                let relevantParams = inputDict.filter { key, _ in
-                    key == "file_path"
-                }
-                filteredParams = relevantParams.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
-            } else {
-                filteredParams = inputDict.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
-            }
-
-            let displayLine = "\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(filteredParams))"
-
-            // Print immediately (with newline to force flush on line-buffered terminals)
+            // Print immediately
             print(displayLine)
 
             // Record start time
@@ -552,3 +586,4 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 }
+

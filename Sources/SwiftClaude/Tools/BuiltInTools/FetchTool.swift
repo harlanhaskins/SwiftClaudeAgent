@@ -29,6 +29,10 @@ public struct FetchTool: Tool {
 
     public init() {}
 
+    public func formatCallSummary(input: FetchToolInput) -> String {
+        truncateForDisplay(input.url, maxLength: 60)
+    }
+
     public func execute(input: FetchToolInput) async throws -> ToolResult {
         // Validate URL
         guard let url = URL(string: input.url) else {

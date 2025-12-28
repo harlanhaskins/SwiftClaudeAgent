@@ -25,6 +25,10 @@ public struct WriteTool: Tool {
 
     public init() {}
 
+    public func formatCallSummary(input: WriteToolInput) -> String {
+        truncatePathForDisplay(input.filePath)
+    }
+
     public func execute(input: WriteToolInput) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: input.filePath)
         let directoryURL = fileURL.deletingLastPathComponent()

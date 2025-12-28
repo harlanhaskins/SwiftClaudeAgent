@@ -29,6 +29,14 @@ public struct GrepTool: Tool {
 
     public init() {}
 
+    public func formatCallSummary(input: GrepToolInput) -> String {
+        let pattern = "\"\(truncateForDisplay(input.pattern, maxLength: 30))\""
+        if let path = input.path, !path.isEmpty {
+            return "\(pattern) in \(truncatePathForDisplay(path))"
+        }
+        return pattern
+    }
+
     public func execute(input: GrepToolInput) async throws -> ToolResult {
         let searchPath = input.path ?? FileManager.default.currentDirectoryPath
         let searchURL = URL(fileURLWithPath: searchPath)

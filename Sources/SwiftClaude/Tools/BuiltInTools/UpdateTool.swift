@@ -66,7 +66,11 @@ public struct UpdateTool: Tool {
     }
 
     public init() {}
-    
+
+    public func formatCallSummary(input: UpdateToolInput) -> String {
+        truncatePathForDisplay(input.filePath)
+    }
+
     public func execute(input: UpdateToolInput) async throws -> ToolResult {
         let fileURL = URL(fileURLWithPath: input.filePath)
 
