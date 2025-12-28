@@ -165,17 +165,21 @@ public struct GrepTool: Tool {
     }
 
     private func formatResults(_ results: [SearchResult], maxResults: Int) -> String {
-        var output = "Found \(results.count) matches"
-        if results.count >= maxResults {
-            output += " (limited)"
-        }
-        output += "\n"
+        var output = ""
 
         for result in results {
             output += "\(result.filePath):\(result.lineNumber): \(result.lineContent)\n"
         }
 
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        output = output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Add truncation message if we hit the limit
+        if results.count >= maxResults {
+            output += "\n\n⚠️ Output truncated: showing \(results.count) matches (limit reached)."
+            output += "\nConsider using a more specific pattern or file_pattern to narrow results."
+        }
+
+        return output
     }
 
     /// Convert glob pattern to regex pattern (simplified version)

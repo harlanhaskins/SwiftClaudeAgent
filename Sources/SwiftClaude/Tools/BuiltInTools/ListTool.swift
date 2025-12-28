@@ -23,6 +23,9 @@ public struct ListTool: Tool {
         ListToolInput.schema
     }
 
+    /// Maximum number of entries to return
+    private static let maxEntries = OutputLimiter.defaultMaxItems
+
     public init() {}
 
     public func execute(input: ListToolInput) async throws -> ToolResult {
@@ -41,19 +44,26 @@ public struct ListTool: Tool {
         let depth = input.depth
         let showHidden = input.showHidden ?? false
 
-        // Collect entries
+        // Collect entries with limit tracking
         var entries: [DirectoryEntry] = []
+        var totalCount = 0
+        var hitLimit = false
 
         if let maxDepth = depth {
-            entries = try listRecursive(
+            (entries, totalCount, hitLimit) = try listRecursive(
                 url: directoryURL,
                 showHidden: showHidden,
                 baseURL: directoryURL,
                 currentDepth: 0,
-                maxDepth: maxDepth
+                maxDepth: maxDepth,
+                limit: Self.maxEntries
             )
         } else {
-            entries = try listDirectory(url: directoryURL, showHidden: showHidden)
+            (entries, totalCount, hitLimit) = try listDirectory(
+                url: directoryURL,
+                showHidden: showHidden,
+                limit: Self.maxEntries
+            )
         }
 
         // Sort entries (directories first, then alphabetically)
@@ -66,11 +76,11 @@ public struct ListTool: Tool {
 
         // Format output
         let dirName = directoryURL.lastPathComponent.isEmpty ? directoryURL.path : directoryURL.lastPathComponent
-        let output = formatEntries(entries, path: dirName, depth: depth)
+        let output = formatEntries(entries, path: dirName, depth: depth, hitLimit: hitLimit, totalCount: totalCount)
         return ToolResult(content: output)
     }
 
-    private func listDirectory(url: URL, showHidden: Bool) throws -> [DirectoryEntry] {
+    private func listDirectory(url: URL, showHidden: Bool, limit: Int) throws -> (entries: [DirectoryEntry], totalCount: Int, hitLimit: Bool) {
         let fileManager = FileManager.default
         var entries: [DirectoryEntry] = []
 
@@ -80,7 +90,10 @@ public struct ListTool: Tool {
             options: showHidden ? [] : [.skipsHiddenFiles]
         )
 
-        for itemURL in contents {
+        let totalCount = contents.count
+        let hitLimit = totalCount > limit
+
+        for itemURL in contents.prefix(limit) {
             let resourceValues = try itemURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
             let isDirectory = resourceValues.isDirectory ?? false
             let fileSize = resourceValues.fileSize
@@ -93,7 +106,7 @@ public struct ListTool: Tool {
             ))
         }
 
-        return entries
+        return (entries, totalCount, hitLimit)
     }
 
     private func listRecursive(
@@ -101,45 +114,63 @@ public struct ListTool: Tool {
         showHidden: Bool,
         baseURL: URL,
         currentDepth: Int,
-        maxDepth: Int
-    ) throws -> [DirectoryEntry] {
+        maxDepth: Int,
+        limit: Int
+    ) throws -> (entries: [DirectoryEntry], totalCount: Int, hitLimit: Bool) {
         var entries: [DirectoryEntry] = []
+        var totalCount = 0
+        var hitLimit = false
 
-        // List current directory
-        let currentEntries = try listDirectory(url: url, showHidden: showHidden)
+        // List current directory (no limit here, we'll track overall)
+        let (currentEntries, _, _) = try listDirectory(url: url, showHidden: showHidden, limit: Int.max)
 
         for entry in currentEntries {
-            // Get path relative to base
-            let relativePath = entry.path.replacingOccurrences(
-                of: baseURL.path + "/",
-                with: ""
-            )
+            totalCount += 1
 
-            entries.append(DirectoryEntry(
-                name: relativePath,
-                path: entry.path,
-                isDirectory: entry.isDirectory,
-                size: entry.size
-            ))
+            if entries.count < limit {
+                // Get path relative to base
+                let relativePath = entry.path.replacingOccurrences(
+                    of: baseURL.path + "/",
+                    with: ""
+                )
+
+                entries.append(DirectoryEntry(
+                    name: relativePath,
+                    path: entry.path,
+                    isDirectory: entry.isDirectory,
+                    size: entry.size
+                ))
+            } else {
+                hitLimit = true
+            }
 
             // Recurse into subdirectories if we haven't reached max depth
             if entry.isDirectory && currentDepth < maxDepth {
                 let subdirURL = URL(fileURLWithPath: entry.path)
-                let subEntries = try listRecursive(
+                let (subEntries, subTotal, subHitLimit) = try listRecursive(
                     url: subdirURL,
                     showHidden: showHidden,
                     baseURL: baseURL,
                     currentDepth: currentDepth + 1,
-                    maxDepth: maxDepth
+                    maxDepth: maxDepth,
+                    limit: limit - entries.count
                 )
                 entries.append(contentsOf: subEntries)
+                totalCount += subTotal
+                if subHitLimit { hitLimit = true }
+            }
+
+            // Stop counting if way over limit
+            if totalCount > limit * 10 {
+                hitLimit = true
+                break
             }
         }
 
-        return entries
+        return (entries, totalCount, hitLimit)
     }
 
-    private func formatEntries(_ entries: [DirectoryEntry], path: String, depth: Int?) -> String {
+    private func formatEntries(_ entries: [DirectoryEntry], path: String, depth: Int?, hitLimit: Bool, totalCount: Int) -> String {
         if entries.isEmpty {
             return "Directory is empty"
         }
@@ -160,6 +191,12 @@ public struct ListTool: Tool {
             let sizePadded = sizeStr.padding(toLength: 10, withPad: " ", startingAt: 0)
 
             output += "\(typePadded) \(sizePadded)  \(entry.name)\n"
+        }
+
+        if hitLimit {
+            let totalStr = totalCount > Self.maxEntries * 10 ? "\(Self.maxEntries * 10)+" : "\(totalCount)"
+            output += "\n⚠️ Output truncated: showing \(entries.count) of \(totalStr) entries."
+            output += "\nConsider using a smaller depth or listing a more specific directory."
         }
 
         return output

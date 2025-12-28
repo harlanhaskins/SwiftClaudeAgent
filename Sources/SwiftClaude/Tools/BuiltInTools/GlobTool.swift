@@ -25,6 +25,9 @@ public struct GlobTool: Tool {
 
     public init() {}
 
+    /// Maximum number of files to return
+    private static let maxResults = OutputLimiter.defaultMaxItems
+
     public func execute(input: GlobToolInput) async throws -> ToolResult {
         let searchPath = input.path ?? FileManager.default.currentDirectoryPath
         let searchURL = URL(fileURLWithPath: searchPath)
@@ -37,8 +40,11 @@ public struct GlobTool: Tool {
         // Convert glob pattern to regex
         let regex = try globToRegex(input.pattern)
 
-        // Find matching files
+        // Find matching files with limit
         var matchingFiles: [String] = []
+        var totalMatches = 0
+        var hitLimit = false
+
         let enumerator = FileManager.default.enumerator(
             at: searchURL,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -54,7 +60,17 @@ public struct GlobTool: Tool {
 
             // Check if path matches pattern
             if relativePath.range(of: regex, options: .regularExpression) != nil {
-                matchingFiles.append(fileURL.path)
+                totalMatches += 1
+                if matchingFiles.count < Self.maxResults {
+                    matchingFiles.append(fileURL.path)
+                } else {
+                    hitLimit = true
+                    // Continue counting to get total (up to a reasonable limit)
+                    if totalMatches > Self.maxResults * 10 {
+                        // Stop counting if way over limit
+                        break
+                    }
+                }
             }
         }
 
@@ -62,13 +78,19 @@ public struct GlobTool: Tool {
         matchingFiles.sort()
 
         // Format output
-        let count = matchingFiles.count
         if matchingFiles.isEmpty {
-            return ToolResult(content: "No matches found")
-        } else {
-            let fileList = matchingFiles.joined(separator: "\n")
-            return ToolResult(content: "Found \(count) matches\n\(fileList)")
+            return ToolResult(content: "No matches found for pattern '\(input.pattern)' in \(searchPath)")
         }
+
+        var content = matchingFiles.joined(separator: "\n")
+
+        if hitLimit {
+            let totalStr = totalMatches > Self.maxResults * 10 ? "\(Self.maxResults * 10)+" : "\(totalMatches)"
+            content += "\n\n⚠️ Output truncated: showing \(matchingFiles.count) of \(totalStr) files."
+            content += "\nConsider narrowing your search with a more specific pattern or path."
+        }
+
+        return ToolResult(content: content)
     }
 
     /// Convert glob pattern to regex pattern

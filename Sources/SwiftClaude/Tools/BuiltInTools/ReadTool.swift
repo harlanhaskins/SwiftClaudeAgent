@@ -23,6 +23,12 @@ public struct ReadTool: Tool {
         ReadToolInput.schema
     }
 
+    /// Maximum lines to return (hard limit)
+    private static let maxLines = 2000
+
+    /// Maximum output size in bytes
+    private static let maxOutputBytes = OutputLimiter.defaultMaxBytes
+
     public init() {}
 
     public func execute(input: ReadToolInput) async throws -> ToolResult {
@@ -33,36 +39,75 @@ public struct ReadTool: Tool {
             throw ToolError.notFound("File not found: \(input.filePath)")
         }
 
-        // Read file contents
-        let contents = try String(contentsOf: fileURL, encoding: .utf8)
-
-        // Apply offset and limit if specified
-        let lines = contents.components(separatedBy: .newlines)
+        // Use streaming reader to avoid loading entire file into memory
         let startLine = input.offset ?? 0
-        let endLine: Int
+        let requestedLimit = input.limit ?? Self.maxLines
+        let effectiveLimit = min(requestedLimit, Self.maxLines)
 
-        if let limit = input.limit {
-            endLine = min(startLine + limit, lines.count)
-        } else {
-            endLine = lines.count
+        var outputLines: [String] = []
+        var totalLinesRead = 0
+        var linesCollected = 0
+        var hitLimit = false
+        var outputSize = 0
+
+        do {
+            for try await line in FileLineReader(url: fileURL) {
+                totalLinesRead = line.number
+
+                // Skip lines before offset (1-based line numbers)
+                if line.number <= startLine {
+                    continue
+                }
+
+                // Check if we've collected enough lines
+                if linesCollected >= effectiveLimit {
+                    hitLimit = true
+                    // Continue reading to count total lines (up to reasonable limit)
+                    if totalLinesRead > startLine + effectiveLimit + 10000 {
+                        break  // Stop counting if way over
+                    }
+                    continue
+                }
+
+                // Format line with line number
+                let paddedNumber = line.number.formatted(.number.grouping(.never))
+                    .padding(toLength: 6, withPad: " ", startingAt: 0)
+                let formattedLine = "\(paddedNumber)\t\(line.text)"
+
+                // Check output size before adding
+                let lineSize = formattedLine.utf8.count + 1  // +1 for newline
+                if outputSize + lineSize > Self.maxOutputBytes {
+                    hitLimit = true
+                    break
+                }
+
+                outputLines.append(formattedLine)
+                outputSize += lineSize
+                linesCollected += 1
+            }
+        } catch {
+            throw ToolError.executionFailed("Failed to read file: \(error.localizedDescription)")
         }
 
         // Validate offset
-        guard startLine >= 0 && startLine < lines.count else {
-            throw ToolError.invalidInput("Offset \(startLine) is out of bounds (file has \(lines.count) lines)")
+        if startLine > 0 && linesCollected == 0 && totalLinesRead <= startLine {
+            throw ToolError.invalidInput("Offset \(startLine) is out of bounds (file has \(totalLinesRead) lines)")
         }
 
-        // Get the requested lines
-        let selectedLines = Array(lines[startLine..<endLine])
+        var output = outputLines.joined(separator: "\n")
 
-        // Format output with line numbers (like cat -n)
-        let numberedLines = selectedLines.enumerated().map { index, line in
-            let lineNumber = startLine + index + 1  // 1-based line numbers
-            let paddedNumber = lineNumber.formatted(.number.grouping(.never))
-                .padding(toLength: 6, withPad: " ", startingAt: 0)
-            return "\(paddedNumber)\t\(line)"
-        }.joined(separator: "\n")
+        // Add truncation message if needed
+        if hitLimit {
+            let endLine = startLine + linesCollected
+            let remaining = totalLinesRead - endLine
+            let remainingStr = remaining > 10000 ? "10000+" : "\(remaining)"
 
-        return ToolResult(content: numberedLines)
+            output += "\n\n⚠️ Output truncated: showing \(linesCollected) lines (starting at line \(startLine + 1))."
+            if remaining > 0 {
+                output += "\n\(remainingStr) more lines available. Use offset=\(endLine) to continue reading."
+            }
+        }
+
+        return ToolResult(content: output)
     }
 }

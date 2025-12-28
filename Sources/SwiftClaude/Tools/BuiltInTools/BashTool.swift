@@ -38,6 +38,9 @@ public struct BashTool: Tool {
         self.defaultTimeout = defaultTimeout
     }
 
+    /// Maximum output size in bytes
+    private static let maxOutputBytes = OutputLimiter.defaultMaxBytes
+
     public func execute(input: BashToolInput) async throws -> ToolResult {
         // Extract timeout (in milliseconds, convert to seconds)
         let timeout = input.timeout.map { TimeInterval($0) / 1000.0 } ?? defaultTimeout
@@ -50,7 +53,10 @@ public struct BashTool: Tool {
 
         // Execute the command
         let output = try await executeCommand(input.command, timeout: timeout)
-        return ToolResult(content: output)
+
+        // Truncate if necessary
+        let result = OutputLimiter.truncateText(output, maxBytes: Self.maxOutputBytes, context: "command output")
+        return ToolResult(content: result.content)
     }
 
     private func executeCommand(_ command: String, timeout: TimeInterval) async throws -> String {

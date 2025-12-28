@@ -83,19 +83,12 @@ public struct FetchTool: Tool {
             throw ToolError.executionFailed("Failed to decode response as UTF-8")
         }
 
-        // Format output
+        // Format output with truncation if needed
         let sizeStr = formatByteCount(data.count)
         var output = "HTTP \(statusCode), \(sizeStr)\n"
 
-        // Limit output size to avoid overwhelming Claude
-        let maxContentLength = 50_000 // ~50KB of text
-        if content.count > maxContentLength {
-            let truncated = String(content.prefix(maxContentLength))
-            output += truncated
-            output += "\n\n... (content truncated)"
-        } else {
-            output += content
-        }
+        let result = OutputLimiter.truncateText(content, maxBytes: OutputLimiter.defaultMaxBytes, context: "response body")
+        output += result.content
 
         return ToolResult(content: output)
     }

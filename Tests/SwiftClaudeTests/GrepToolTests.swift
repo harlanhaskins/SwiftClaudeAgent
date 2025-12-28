@@ -182,7 +182,6 @@ struct GrepToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
-        #expect(result.content.contains("2 matches"))
         #expect(result.content.contains(":1:"))  // Line 1
         #expect(result.content.contains(":4:"))  // Line 4
     }
@@ -203,8 +202,8 @@ struct GrepToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
+        #expect(result.content.contains("truncated"))
         #expect(result.content.contains("5 matches"))
-        #expect(result.content.contains("limited"))
     }
 
     @Test("GrepTool - No matches")
@@ -239,7 +238,8 @@ struct GrepToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
-        #expect(result.content.contains("1 matches"))
+        #expect(result.content.contains(":1:"))  // Found on line 1
+        #expect(result.content.contains("Apple"))
     }
 
     @Test("GrepTool - Regex pattern")
@@ -256,7 +256,8 @@ struct GrepToolTests {
 
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
-        #expect(result.content.contains("2 matches"))  // test123 and test456
+        #expect(result.content.contains(":1:"))  // test123 on line 1
+        #expect(result.content.contains(":4:"))  // test456 on line 4
     }
 
     @Test("GrepTool - Large file doesn't load all into memory")
@@ -282,6 +283,7 @@ struct GrepToolTests {
         // because it stops reading after finding 5 matches (after ~5000 lines)
         let result = try await tool.execute(input: input)
         #expect(!result.isError)
+        #expect(result.content.contains("truncated"))
         #expect(result.content.contains("5 matches"))
     }
 
@@ -307,8 +309,7 @@ func useOldName() {
 
         let grepResult = try await grepTool.execute(input: grepInput)
         // Note: "oldName" appears in lines 1 and 3, plus embedded in "useOldName" on line 2
-        // But regex treats it as 3 separate matches
-        #expect(grepResult.content.contains("matches"))
+        #expect(grepResult.content.contains("oldName"))
 
         // Then use Update to replace all lines containing oldName
         let updateTool = UpdateTool()
