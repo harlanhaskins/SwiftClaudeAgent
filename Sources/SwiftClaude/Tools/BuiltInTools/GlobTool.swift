@@ -1,9 +1,16 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// Tool for finding files by glob pattern.
 ///
 /// The Glob tool allows Claude to find files matching a glob pattern.
 /// It supports standard glob syntax like `**/*.swift` for recursive matching.
+///
+/// Uses libc glob() for fast pattern matching, with directory expansion for `**` patterns.
 ///
 /// # Tool Name
 /// Name is automatically derived from type: `GlobTool` → `"Glob"`
@@ -30,139 +37,154 @@ public struct GlobTool: Tool {
 
     public func execute(input: GlobToolInput) async throws -> ToolResult {
         let searchPath = input.path ?? FileManager.default.currentDirectoryPath
-        let searchURL = URL(fileURLWithPath: searchPath)
 
         // Check if search path exists
         guard FileManager.default.fileExists(atPath: searchPath) else {
             throw ToolError.notFound("Directory not found: \(searchPath)")
         }
 
-        // Convert glob pattern to regex
-        let regex = try globToRegex(input.pattern)
+        // Expand ** patterns and collect all glob patterns to run
+        let patterns = expandDoubleStarPattern(input.pattern, in: searchPath)
 
-        // Find matching files with limit
-        var matchingFiles: [String] = []
-        var totalMatches = 0
+        // Run glob on each pattern and collect results
+        var matchingFiles = Set<String>()
         var hitLimit = false
 
-        let enumerator = FileManager.default.enumerator(
-            at: searchURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-
-        while let fileURL = enumerator?.nextObject() as? URL {
-            // Get path relative to search directory
-            let relativePath = fileURL.path.replacingOccurrences(
-                of: searchURL.path + "/",
-                with: ""
-            )
-
-            // Check if path matches pattern
-            if relativePath.range(of: regex, options: .regularExpression) != nil {
-                totalMatches += 1
-                if matchingFiles.count < Self.maxResults {
-                    matchingFiles.append(fileURL.path)
-                } else {
+        for pattern in patterns {
+            let matches = runGlob(pattern: pattern)
+            for match in matches {
+                if matchingFiles.count >= Self.maxResults {
                     hitLimit = true
-                    // Continue counting to get total (up to a reasonable limit)
-                    if totalMatches > Self.maxResults * 10 {
-                        // Stop counting if way over limit
-                        break
-                    }
+                    break
                 }
+                matchingFiles.insert(match)
             }
+            if hitLimit { break }
         }
 
         // Sort results for consistency
-        matchingFiles.sort()
+        let sortedFiles = matchingFiles.sorted()
 
         // Format output
-        if matchingFiles.isEmpty {
+        if sortedFiles.isEmpty {
             return ToolResult(content: "No matches found for pattern '\(input.pattern)' in \(searchPath)")
         }
 
-        var content = matchingFiles.joined(separator: "\n")
+        var content = sortedFiles.joined(separator: "\n")
 
         if hitLimit {
-            let totalStr = totalMatches > Self.maxResults * 10 ? "\(Self.maxResults * 10)+" : "\(totalMatches)"
-            content += "\n\n⚠️ Output truncated: showing \(matchingFiles.count) of \(totalStr) files."
+            content += "\n\n⚠️ Output truncated: showing \(sortedFiles.count) files (limit reached)."
             content += "\nConsider narrowing your search with a more specific pattern or path."
         }
 
         return ToolResult(content: content)
     }
 
-    /// Convert glob pattern to regex pattern
-    private func globToRegex(_ pattern: String) throws -> String {
-        var regex = "^"
-        var i = pattern.startIndex
-
-        while i < pattern.endIndex {
-            let char = pattern[i]
-
-            switch char {
-            case "*":
-                // Check for **
-                let nextIndex = pattern.index(after: i)
-                if nextIndex < pattern.endIndex && pattern[nextIndex] == "*" {
-                    // ** matches any number of directories
-                    regex += ".*"
-                    i = pattern.index(after: nextIndex)
-                    // Skip the following / if present
-                    if i < pattern.endIndex && pattern[i] == "/" {
-                        i = pattern.index(after: i)
-                    }
-                    continue
-                } else {
-                    // * matches anything except /
-                    regex += "[^/]*"
-                }
-            case "?":
-                // ? matches any single character except /
-                regex += "[^/]"
-            case ".":
-                regex += "\\."
-            case "[":
-                // Character class - pass through but escape special chars
-                regex += "["
-                i = pattern.index(after: i)
-                var foundClose = false
-                while i < pattern.endIndex {
-                    let classChar = pattern[i]
-                    if classChar == "]" {
-                        regex += "]"
-                        foundClose = true
-                        break
-                    } else if classChar == "\\" {
-                        regex += "\\\\"
-                    } else {
-                        regex.append(classChar)
-                    }
-                    i = pattern.index(after: i)
-                }
-                if !foundClose {
-                    throw ToolError.invalidInput("Unclosed character class in pattern")
-                }
-            case "\\":
-                // Escape next character
-                i = pattern.index(after: i)
-                if i < pattern.endIndex {
-                    regex += "\\"
-                    regex.append(pattern[i])
-                }
-            default:
-                // Escape regex special chars
-                if "^$|(){}+".contains(char) {
-                    regex += "\\"
-                }
-                regex.append(char)
-            }
-
-            i = pattern.index(after: i)
+    /// Expand patterns containing ** into multiple concrete patterns
+    private func expandDoubleStarPattern(_ pattern: String, in basePath: String) -> [String] {
+        // If no **, just return the pattern as-is (with base path prepended)
+        guard let starStarRange = pattern.range(of: "**") else {
+            let fullPattern = (basePath as NSString).appendingPathComponent(pattern)
+            return [fullPattern]
         }
 
-        regex += "$"
-        return regex
+        // Split pattern into prefix (before **) and suffix (after **)
+        let prefix = String(pattern[..<starStarRange.lowerBound])
+        var suffix = String(pattern[starStarRange.upperBound...])
+
+        // Remove leading / from suffix if present
+        if suffix.hasPrefix("/") {
+            suffix.removeFirst()
+        }
+
+        // Get the base directory to search from
+        let searchBase: String
+        if prefix.isEmpty {
+            searchBase = basePath
+        } else {
+            // Remove trailing / from prefix
+            let cleanPrefix = prefix.hasSuffix("/") ? String(prefix.dropLast()) : prefix
+            searchBase = (basePath as NSString).appendingPathComponent(cleanPrefix)
+        }
+
+        // Find all directories recursively
+        var directories = [searchBase]
+        directories.append(contentsOf: findAllDirectories(in: searchBase))
+
+        // If suffix contains another **, recursively expand
+        if suffix.contains("**") {
+            var allPatterns: [String] = []
+            for dir in directories {
+                allPatterns.append(contentsOf: expandDoubleStarPattern(suffix, in: dir))
+            }
+            return allPatterns
+        }
+
+        // Create a pattern for each directory
+        return directories.map { dir in
+            if suffix.isEmpty {
+                return dir
+            } else {
+                return (dir as NSString).appendingPathComponent(suffix)
+            }
+        }
+    }
+
+    /// Find all directories recursively under the given path
+    private func findAllDirectories(in path: String) -> [String] {
+        var directories: [String] = []
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: URL(fileURLWithPath: path),
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return directories
+        }
+
+        while let url = enumerator.nextObject() as? URL {
+            do {
+                let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
+                if resourceValues.isDirectory == true {
+                    directories.append(url.path)
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return directories
+    }
+
+    /// Run libc glob() on a pattern and return matching paths
+    private func runGlob(pattern: String) -> [String] {
+        var gt = glob_t()
+        defer { globfree(&gt) }
+
+        let flags = GLOB_BRACE | GLOB_TILDE | GLOB_MARK
+        let result = glob(pattern, flags, nil, &gt)
+
+        guard result == 0 else {
+            return []
+        }
+
+        var matches: [String] = []
+        for i in 0..<Int(gt.gl_pathc) {
+            if let cString = gt.gl_pathv[i] {
+                var path = String(cString: cString)
+                // GLOB_MARK adds trailing / to directories, remove it
+                if path.hasSuffix("/") {
+                    path.removeLast()
+                }
+                // Only include files, not directories
+                var isDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+                   !isDirectory.boolValue {
+                    matches.append(path)
+                }
+            }
+        }
+
+        return matches
     }
 }
