@@ -247,6 +247,9 @@ public actor ClaudeClient {
             while continueLoop {
                 try Task.checkCancellation()
 
+                // Compact history if needed (before preparing messages)
+                try await compactHistoryIfNeeded()
+
                 // Add system prompt if provided and not already in history
                 var messagesToSend = conversationHistory
                 if let systemPrompt = options.systemPrompt {
@@ -410,6 +413,188 @@ public actor ClaudeClient {
 
     private func setState(_ newState: ClientState) {
         self.state = newState
+    }
+
+    // MARK: - Auto-Compaction
+
+    /// Estimate token count for messages (rough approximation: ~4 chars per token)
+    private func estimateTokens(_ messages: [Message]) -> Int {
+        let totalChars = messages.reduce(0) { count, message in
+            count + messageCharCount(message)
+        }
+        return totalChars / 4
+    }
+
+    /// Count characters in a message
+    private func messageCharCount(_ message: Message) -> Int {
+        switch message {
+        case .user(let msg):
+            return msg.content.count
+        case .assistant(let msg):
+            return msg.content.reduce(0) { count, block in
+                count + blockCharCount(block)
+            }
+        case .system(let msg):
+            return msg.content.count
+        case .result(let msg):
+            return msg.content.reduce(0) { count, block in
+                count + blockCharCount(block)
+            }
+        }
+    }
+
+    /// Count characters in a content block
+    private func blockCharCount(_ block: ContentBlock) -> Int {
+        switch block {
+        case .text(let textBlock):
+            return textBlock.text.count
+        case .thinking(let thinkingBlock):
+            return thinkingBlock.thinking.count
+        case .toolUse(let toolUse):
+            return toolUse.name.count + 50 // Rough estimate
+        case .toolResult(let result):
+            return result.content.reduce(0) { count, block in
+                count + blockCharCount(block)
+            }
+        }
+    }
+
+    /// Separate messages into tool-related and text-only messages
+    private func categorizeMessages(_ messages: [Message]) -> (toolMessages: [Message], textMessages: [Message]) {
+        var toolMessages: [Message] = []
+        var textMessages: [Message] = []
+
+        for message in messages {
+            switch message {
+            case .assistant(let msg):
+                // Check if this assistant message contains tool uses
+                let hasToolUse = msg.content.contains { block in
+                    if case .toolUse = block {
+                        return true
+                    }
+                    return false
+                }
+                if hasToolUse {
+                    toolMessages.append(message)
+                } else {
+                    textMessages.append(message)
+                }
+            case .result:
+                // Always preserve tool results
+                toolMessages.append(message)
+            case .user, .system:
+                textMessages.append(message)
+            }
+        }
+
+        return (toolMessages, textMessages)
+    }
+
+    /// Format messages as text for summarization
+    private func formatMessagesAsText(_ messages: [Message]) -> String {
+        messages.map { message in
+            switch message {
+            case .user(let msg):
+                return "User: \(msg.content)"
+            case .assistant(let msg):
+                let text = msg.content.compactMap { block -> String? in
+                    switch block {
+                    case .text(let textBlock):
+                        return textBlock.text
+                    case .thinking(let thinkingBlock):
+                        return "[thinking: \(thinkingBlock.thinking)]"
+                    default:
+                        return nil
+                    }
+                }.joined(separator: "\n")
+                return "Assistant: \(text)"
+            case .system(let msg):
+                return "System: \(msg.content)"
+            case .result:
+                return "" // Skip results in text format
+            }
+        }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// Summarize messages using Claude API
+    private func summarizeMessages(_ messages: [Message]) async throws -> Message {
+        let transcript = formatMessagesAsText(messages)
+
+        let summaryPrompt = """
+        Summarize this conversation history concisely, preserving:
+        - Key decisions and conclusions
+        - Important context needed for ongoing work
+        - User preferences or requirements mentioned
+        - Technical details that may be referenced later
+
+        Omit:
+        - Greetings and pleasantries
+        - Repetitive confirmations
+        - Issues that were fully resolved
+        - Verbose explanations (keep only key points)
+
+        Format as a concise summary paragraph (2-4 sentences).
+
+        Conversation:
+        \(transcript)
+        """
+
+        // Create a minimal request for summarization
+        var summaryText = ""
+        for try await message in await apiClient.streamComplete(
+            messages: [.user(UserMessage(content: summaryPrompt))],
+            model: options.model,
+            systemPrompt: nil,
+            maxTokens: 1000,
+            temperature: nil,
+            tools: nil
+        ) {
+            if case .assistant(let msg) = message {
+                for block in msg.content {
+                    if case .text(let textBlock) = block {
+                        summaryText += textBlock.text
+                    }
+                }
+            }
+        }
+
+        // Return as a system message with clear labeling
+        return .system(SystemMessage(content: "[Previous conversation summary]: \(summaryText.trimmingCharacters(in: .whitespacesAndNewlines))"))
+    }
+
+    /// Compact conversation history if needed
+    private func compactHistoryIfNeeded() async throws {
+        guard options.compactionEnabled else { return }
+
+        // Check if we need to compact
+        let messageCount = conversationHistory.count
+        let estimatedTokenCount = estimateTokens(conversationHistory)
+
+        let shouldCompactByMessages = messageCount > options.compactionThreshold
+        let shouldCompactByTokens = estimatedTokenCount > Int(Double(options.contextWindowLimit) * 0.7)
+
+        guard shouldCompactByMessages || shouldCompactByTokens else { return }
+
+        // Split history: recent messages vs old messages
+        let recentCount = min(options.keepRecentMessages, conversationHistory.count)
+        let recentMessages = Array(conversationHistory.suffix(recentCount))
+        let oldMessages = Array(conversationHistory.prefix(conversationHistory.count - recentCount))
+
+        guard !oldMessages.isEmpty else { return }
+
+        // Categorize old messages
+        let (toolMessages, textMessages) = categorizeMessages(oldMessages)
+
+        // Only compact if there are text messages to summarize
+        guard !textMessages.isEmpty else { return }
+
+        // Summarize text-only messages
+        let summary = try await summarizeMessages(textMessages)
+
+        // Rebuild history: [summary] + [preserved tool messages] + [recent full messages]
+        conversationHistory = [summary] + toolMessages + recentMessages
+
+        print("🗜️  Compacted history: \(messageCount) → \(conversationHistory.count) messages (~\(estimatedTokenCount) → ~\(estimateTokens(conversationHistory)) tokens)")
     }
 }
 

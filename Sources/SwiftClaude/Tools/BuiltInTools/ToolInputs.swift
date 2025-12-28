@@ -62,13 +62,13 @@ public struct WriteToolInput: Codable, Sendable, Equatable {
 
 // MARK: - Update Tool Input
 
-/// Represents a single line range replacement
+/// Represents a single line range replacement or insertion
 public struct UpdateReplacement: Codable, Sendable, Equatable {
     public let startLine: Int
-    public let endLine: Int
+    public let endLine: Int?  // Optional: if nil, inserts before startLine
     public let newContent: String
 
-    public init(startLine: Int, endLine: Int, newContent: String) {
+    public init(startLine: Int, endLine: Int? = nil, newContent: String) {
         self.startLine = startLine
         self.endLine = endLine
         self.newContent = newContent
@@ -92,7 +92,7 @@ public struct UpdateToolInput: Codable, Sendable, Equatable {
     }
 
     /// Convenience initializer for single replacement
-    public init(filePath: String, startLine: Int, endLine: Int, newContent: String) {
+    public init(filePath: String, startLine: Int, endLine: Int? = nil, newContent: String) {
         self.filePath = filePath
         self.replacements = [UpdateReplacement(startLine: startLine, endLine: endLine, newContent: newContent)]
     }
@@ -110,14 +110,14 @@ public struct UpdateToolInput: Codable, Sendable, Equatable {
                 "replacements": .array(
                     items: .object(
                         properties: [
-                            "start_line": .integer(description: "Starting line number (1-indexed, inclusive) - matches line numbers shown by Read tool"),
-                            "end_line": .integer(description: "Ending line number (1-indexed, exclusive) - matches line numbers shown by Read tool"),
-                            "new_content": .string(description: "New content to replace the specified line range")
+                            "start_line": .integer(description: "Line number (1-indexed). For replacement: first line to replace. For insertion: line to insert before."),
+                            "end_line": .integer(description: "Last line to replace (1-indexed, inclusive). OPTIONAL: Omit to insert before start_line without replacing anything."),
+                            "new_content": .string(description: "New content. For replacement: replaces lines start_line through end_line. For insertion: inserted before start_line.")
                         ],
-                        required: ["start_line", "end_line", "new_content"],
-                        description: "A single replacement specification"
+                        required: ["start_line", "new_content"],
+                        description: "Replacement: {start_line: 5, end_line: 7, new_content: \"...\"} replaces lines 5-7. Insertion: {start_line: 5, new_content: \"...\"} inserts before line 5."
                     ),
-                    description: "Array of replacements to apply. Line numbers are 1-indexed to match the Read tool output. Replacements are applied from bottom to top to preserve line numbers, so you can specify them in any order."
+                    description: "Array of replacements/insertions to apply. Supports both replacing line ranges and inserting new lines."
                 )
             ],
             required: ["file_path", "replacements"]

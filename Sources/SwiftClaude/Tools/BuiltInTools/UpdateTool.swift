@@ -1,98 +1,60 @@
 import Foundation
 
-/// Tool for updating specific portions of a file.
+/// Tool for updating files: replace line ranges or insert new lines.
 ///
-/// The Update tool allows Claude to modify specific sections of a file by replacing
-/// content within specified line ranges. Supports both single and multiple replacements
-/// in a single operation.
+/// # Two Modes
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `UpdateTool` → `"Update"`
+/// **Replace mode** (endLine provided): Replaces lines startLine through endLine (both inclusive)
+/// **Insert mode** (endLine omitted): Inserts newContent before startLine without replacing anything
 ///
-/// # IMPORTANT: Common Mistakes to Avoid
+/// # Rules
 ///
-/// ⚠️ **DO NOT include context that's already in the file**
+/// - Line numbers start at 1 (match Read tool output)
+/// - Always read the file first to see line numbers
+/// - Supports multiple operations in one call
 ///
-/// **WRONG - Causes duplicates:**
+/// # Examples
+///
+/// **Insert a new line:**
 /// ```
 /// File has:
-///   334: func myFunction() {
-///   335:     let x = 1
-///   336:     let y = 2
-///   337:     // old code to replace
-///   ...
+///   71: try weather.createTables()
+///   72:
+///   73: let filePath = ...
 ///
-/// Update(startLine: 337, endLine: 400, newContent: "func myFunction() {\n    let x = 1\n    let y = 2\n    // new code")
-/// Result: Lines 334-336 stay, then new_content adds them again → DUPLICATE!
+/// Update(startLine: 72, newContent: "    // TODO: Refactor this")
+///
+/// Result:
+///   71: try weather.createTables()
+///   72:     // TODO: Refactor this
+///   73:
+///   74: let filePath = ...
 /// ```
 ///
-/// **CORRECT:**
+/// **Replace a single line:**
 /// ```
-/// Update(startLine: 334, endLine: 400, newContent: "func myFunction() {\n    let x = 1\n    let y = 2\n    // new code")
-/// Result: Clean replacement, no duplicates
+/// File has:
+///   5: let x = 1
+///
+/// Update(startLine: 5, endLine: 5, newContent: "let x = 2")
+///
+/// Result:
+///   5: let x = 2
 /// ```
 ///
-/// # Line Number Rules
-///
-/// - Line numbers are **1-indexed** (first line is 1, not 0)
-/// - `endLine` is **exclusive** (not replaced)
-/// - To replace lines 5-10 inclusive, use `startLine: 5, endLine: 11`
-/// - **Always read the file first** to get exact line numbers
-/// - `new_content` should ONLY contain lines that go between `startLine` and `endLine`
-///
-/// # Correct Usage Examples
-///
-/// **Example 1: Replace a function**
+/// **Replace multiple lines:**
 /// ```
-/// File before (Read tool output):
-///   10: func oldFunction() {
+/// File has:
+///   10: func old() {
 ///   11:     return 42
 ///   12: }
-///   13:
-///   14: func anotherFunction() {
 ///
-/// Correct Update:
-///   startLine: 10
-///   endLine: 13  (exclusive, so replaces lines 10-12)
-///   newContent: "func newFunction() {\n    return 100\n}"
+/// Update(startLine: 10, endLine: 12, newContent: "func new() {\n    return 100\n}")
 ///
-/// File after:
-///   10: func newFunction() {
+/// Result:
+///   10: func new() {
 ///   11:     return 100
 ///   12: }
-///   13:
-///   14: func anotherFunction() {
-/// ```
-///
-/// **Example 2: Replace middle of function**
-/// ```
-/// File before:
-///   20: func process() {
-///   21:     let start = true
-///   22:     // old logic
-///   23:     let end = false
-///   24: }
-///
-/// To replace ONLY line 22:
-///   startLine: 22
-///   endLine: 23
-///   newContent: "    // new logic"
-///
-/// DON'T include lines 20-21 or 23-24 in newContent!
-/// ```
-///
-/// **Example 3: Multiple replacements**
-/// ```swift
-/// let tool = UpdateTool()
-/// let input = UpdateToolInput(
-///     filePath: "/path/to/file.txt",
-///     replacements: [
-///         UpdateReplacement(startLine: 1, endLine: 2, newContent: "First line"),
-///         UpdateReplacement(startLine: 5, endLine: 7, newContent: "Middle lines"),
-///         UpdateReplacement(startLine: 10, endLine: 11, newContent: "Last line")
-///     ]
-/// )
-/// let result = try await tool.execute(input: input)
 /// ```
 public struct UpdateTool: Tool {
     public typealias Input = UpdateToolInput
@@ -139,24 +101,52 @@ public struct UpdateTool: Tool {
             }
         }
 
-        // Convert from 1-based (user-facing) to 0-based (internal) line numbers
+        // Convert from 1-based (user-facing) to 0-based (internal)
+        // Replace mode: "lines 5-7" means replace lines 5, 6, 7 (inclusive)
+        //   -> 0-based: startLine = 4, endLine = 7 (exclusive, so indices 4, 5, 6)
+        // Insert mode: "before line 5" means insert before line 5, don't replace anything
+        //   -> 0-based: startLine = 4, endLine = 4 (empty range, just insert)
         let zeroBasedReplacements = input.replacements.map { replacement in
-            UpdateReplacement(
-                startLine: replacement.startLine - 1,
-                endLine: replacement.endLine - 1,
+            let zeroBasedStart = replacement.startLine - 1
+            let zeroBasedEnd: Int
+            if let userEndLine = replacement.endLine {
+                // Replace mode: inclusive to exclusive
+                zeroBasedEnd = userEndLine
+            } else {
+                // Insert mode: insert before startLine (empty range)
+                zeroBasedEnd = zeroBasedStart
+            }
+
+            return UpdateReplacement(
+                startLine: zeroBasedStart,
+                endLine: zeroBasedEnd,
                 newContent: replacement.newContent
             )
         }
 
         // Validate all replacements (now in 0-based)
-        for (index, replacement) in zeroBasedReplacements.enumerated() {
+        for (index, _) in zeroBasedReplacements.enumerated() {
             let originalReplacement = input.replacements[index]
-            guard replacement.startLine >= 0 && replacement.startLine <= lines.count else {
-                throw ToolError.invalidInput("Replacement \(index): Start line \(originalReplacement.startLine) is out of bounds (file has \(lines.count) lines, valid range: 1-\(lines.count))")
+
+            // For insert mode, startLine can be 1 to lines.count+1 (insert at end)
+            // For replace mode, startLine must be 1 to lines.count
+            let isInsertMode = originalReplacement.endLine == nil
+            let maxValidStart = isInsertMode ? lines.count + 1 : lines.count
+
+            guard originalReplacement.startLine >= 1 && originalReplacement.startLine <= maxValidStart else {
+                let mode = isInsertMode ? "insert" : "replace"
+                throw ToolError.invalidInput("Operation \(index) (\(mode)): startLine \(originalReplacement.startLine) is out of bounds. File has \(lines.count) lines (valid: 1-\(maxValidStart))")
             }
 
-            guard replacement.endLine >= replacement.startLine && replacement.endLine <= lines.count else {
-                throw ToolError.invalidInput("Replacement \(index): End line \(originalReplacement.endLine) is out of bounds or before start line (file has \(lines.count) lines, valid range: 1-\(lines.count), end is exclusive)")
+            // Validate endLine if provided (replace mode)
+            if let userEndLine = originalReplacement.endLine {
+                guard userEndLine >= originalReplacement.startLine else {
+                    throw ToolError.invalidInput("Operation \(index): endLine \(userEndLine) must be >= startLine \(originalReplacement.startLine)")
+                }
+
+                guard userEndLine <= lines.count else {
+                    throw ToolError.invalidInput("Operation \(index): endLine \(userEndLine) is out of bounds. File has \(lines.count) lines (valid: 1-\(lines.count))")
+                }
             }
         }
 
@@ -202,8 +192,14 @@ public struct UpdateTool: Tool {
 
         if input.replacements.count == 1 {
             let rep = input.replacements[0]
-            let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
-            output += "Replaced lines \(rangeDesc) with \(totalLinesAdded) lines (\(netSign)\(netChange))\n"
+            if let endLine = rep.endLine {
+                // Replace mode
+                let rangeDesc = endLine == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(endLine)"
+                output += "Replaced lines \(rangeDesc) with \(totalLinesAdded) lines (\(netSign)\(netChange))\n"
+            } else {
+                // Insert mode
+                output += "Inserted \(totalLinesAdded) lines before line \(rep.startLine) (+\(totalLinesAdded))\n"
+            }
 
             // Show the new lines that were added
             let startLineNum = rep.startLine
@@ -213,12 +209,16 @@ public struct UpdateTool: Tool {
                 output += "\(lineNum): \(line)\n"
             }
         } else {
-            output += "Applied \(input.replacements.count) replacements: -\(totalLinesRemoved) +\(totalLinesAdded) (\(netSign)\(netChange))\n"
+            output += "Applied \(input.replacements.count) operations: -\(totalLinesRemoved) +\(totalLinesAdded) (\(netSign)\(netChange))\n"
 
-            // For multiple replacements, show a summary of each
+            // For multiple operations, show a summary of each
             for rep in input.replacements {
-                let rangeDesc = rep.endLine - 1 == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(rep.endLine - 1)"
-                output += "• Lines \(rangeDesc) updated\n"
+                if let endLine = rep.endLine {
+                    let rangeDesc = endLine == rep.startLine ? "\(rep.startLine)" : "\(rep.startLine)-\(endLine)"
+                    output += "• Lines \(rangeDesc) replaced\n"
+                } else {
+                    output += "• Inserted before line \(rep.startLine)\n"
+                }
             }
         }
 
@@ -234,8 +234,9 @@ public struct UpdateTool: Tool {
             let current = sorted[i]
             let next = sorted[i + 1]
 
-            if current.endLine > next.startLine {
-                throw ToolError.invalidInput("Overlapping replacements: lines \(current.startLine)-\(current.endLine) overlap with \(next.startLine)-\(next.endLine)")
+            // endLine is already in 0-based exclusive format at this point
+            if let currentEnd = current.endLine, currentEnd > next.startLine {
+                throw ToolError.invalidInput("Overlapping operations: range at index \(i) overlaps with range at index \(i + 1)")
             }
         }
     }
@@ -244,6 +245,9 @@ public struct UpdateTool: Tool {
         _ replacement: UpdateReplacement,
         to lines: inout [String]
     ) throws -> (added: Int, removed: Int) {
+        // endLine is already in 0-based exclusive format (or nil for insert)
+        let endLine = replacement.endLine ?? replacement.startLine  // nil means insert (empty range)
+
         // Build new section
         var newSection: [String] = []
 
@@ -262,12 +266,12 @@ public struct UpdateTool: Tool {
         newSection.append(contentsOf: contentLines)
 
         // Add remaining original lines
-        if replacement.endLine < lines.count {
-            newSection.append(contentsOf: lines[replacement.endLine...])
+        if endLine < lines.count {
+            newSection.append(contentsOf: lines[endLine...])
         }
 
         // Calculate changes
-        let linesRemoved = replacement.endLine - replacement.startLine
+        let linesRemoved = endLine - replacement.startLine
         let linesAdded = contentLines.count
 
         // Update lines array
