@@ -4,51 +4,23 @@ import Foundation
 
 /// Result builder for declaratively constructing tool sets.
 ///
-/// Supports conditional registration with if statements and loops.
-///
 /// # Example
 /// ```swift
 /// let tools = Tools {
 ///     ReadTool()
 ///     WriteTool()
-///     if needsBash {
-///         BashTool(workingDirectory: workingDir)
-///     }
+///     BashTool(workingDirectory: workingDir)
 ///     GlobTool()
-///     if enableNetwork {
-///         FetchTool()
-///         WebSearchTool()
-///     }
 /// }
 /// ```
 @resultBuilder
 public struct ToolsBuilder {
-    public static func buildBlock(_ tools: any Tool...) -> [any Tool] {
+    public static func buildBlock(_ tools: (any Tool)...) -> [any Tool] {
         Array(tools)
     }
 
-    public static func buildOptional(_ tools: [any Tool]?) -> [any Tool] {
-        tools ?? []
-    }
-
-    public static func buildEither(first tools: [any Tool]) -> [any Tool] {
-        tools
-    }
-
-    public static func buildEither(second tools: [any Tool]) -> [any Tool] {
-        tools
-    }
-
-    public static func buildArray(_ tools: [[any Tool]]) -> [any Tool] {
-        tools.flatMap { $0 }
-    }
-
-    public static func buildExpression(_ tool: any Tool) -> [any Tool] {
-        [tool]
-    }
-
-    public static func buildExpression(_ tools: [any Tool]) -> [any Tool] {
-        tools
+    public static func buildOptional(_ tool: (any Tool)?) -> [any Tool] {
+        tool.map { [$0] } ?? []
     }
 }
 
@@ -61,10 +33,11 @@ public struct ToolsBuilder {
 ///
 /// # Example
 /// ```swift
-/// let tools = Tools.shared
-///
-/// // Get all tool definitions for API
-/// let definitions = tools.anthropicTools()
+/// let tools = Tools {
+///     ReadTool()
+///     WriteTool()
+///     BashTool(workingDirectory: workingDir)
+/// }
 ///
 /// // Execute a tool by name
 /// let result = try await tools.execute(
@@ -74,67 +47,20 @@ public struct ToolsBuilder {
 /// )
 /// ```
 public final class Tools: Sendable {
-    // MARK: - Singleton
-
-    /// Shared global instance with all built-in tools pre-registered
-    public static let shared = Tools()
-
     // MARK: - Properties
 
     private let tools: [String: any Tool]
 
     // MARK: - Initialization
 
-    /// Initialize with built-in tools
-    /// - Parameter registerBuiltIns: Whether to register built-in tools (default: true)
-    public init(registerBuiltIns: Bool = true, workingDirectory: URL? = nil) {
-        var toolsDict: [String: any Tool] = [:]
-
-        if registerBuiltIns {
-            // Register custom built-in tools (executed locally)
-            let readTool = ReadTool()
-            let writeTool = WriteTool()
-            let updateTool = UpdateTool()
-            let bashTool = BashTool(workingDirectory: workingDirectory)
-            let globTool = GlobTool()
-            let grepTool = GrepTool()
-            let listTool = ListTool()
-            let fetchTool = FetchTool()
-
-            toolsDict[readTool.name] = readTool
-            toolsDict[writeTool.name] = writeTool
-            toolsDict[updateTool.name] = updateTool
-            toolsDict[bashTool.name] = bashTool
-            toolsDict[globTool.name] = globTool
-            toolsDict[grepTool.name] = grepTool
-            toolsDict[listTool.name] = listTool
-            toolsDict[fetchTool.name] = fetchTool
-
-            // Register Anthropic built-in tools (executed server-side)
-            let webSearchTool = WebSearchTool()
-            toolsDict[webSearchTool.name] = webSearchTool
-        }
-
-        self.tools = toolsDict
-    }
-
     /// Initialize with tools using a result builder.
-    ///
-    /// This provides a declarative, type-safe way to construct a tools instance.
-    /// Supports conditional registration with if statements and loops.
     ///
     /// # Example
     /// ```swift
     /// let tools = Tools {
     ///     ReadTool()
     ///     WriteTool()
-    ///     if needsBash {
-    ///         BashTool(workingDirectory: workingDir)
-    ///     }
-    ///     if enableNetwork {
-    ///         FetchTool()
-    ///         WebSearchTool()
-    ///     }
+    ///     BashTool(workingDirectory: workingDir)
     /// }
     /// ```
     public init(@ToolsBuilder _ buildTools: () -> [any Tool]) {
@@ -251,63 +177,5 @@ public final class Tools: Sendable {
         let decoder = JSONDecoder()
         let input = try decoder.decode(T.Input.self, from: inputData)
         return try await tool.execute(input: input)
-    }
-}
-
-// MARK: - Built-in Tool Registration
-
-extension Tools {
-    /// All default built-in tools with BashTool configured for current working directory.
-    ///
-    /// Useful for composing with the result builder:
-    /// ```swift
-    /// let tools = Tools {
-    ///     Tools.defaultTools
-    /// }
-    /// ```
-    public static var defaultTools: [any Tool] {
-        [
-            ReadTool(),
-            WriteTool(),
-            UpdateTool(),
-            BashTool(workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)),
-            GlobTool(),
-            GrepTool(),
-            ListTool(),
-            FetchTool(),
-            WebSearchTool()
-        ]
-    }
-
-    /// Create a tools instance with only specific built-in tools
-    /// - Parameters:
-    ///   - toolNames: Names of built-in tools to include (e.g., ["Read", "Write", "WebSearch"])
-    ///   - workingDirectory: Working directory for Bash tool
-    /// - Returns: A new Tools instance with the specified tools
-    public static func withBuiltInTools(_ toolNames: [String], workingDirectory: URL? = nil) -> Tools {
-        // Create tool instances - their names are derived from their types
-        let allBuiltInTools: [any Tool] = [
-            ReadTool(),
-            WriteTool(),
-            UpdateTool(),
-            BashTool(workingDirectory: workingDirectory),
-            GlobTool(),
-            GrepTool(),
-            ListTool(),
-            FetchTool(),
-            WebSearchTool()
-        ]
-
-        // Filter to only the requested tools
-        let selectedTools = allBuiltInTools.filter { toolNames.contains($0.name) }
-
-        // Create tools dictionary directly
-        var toolsDict: [String: any Tool] = [:]
-        for tool in selectedTools {
-            toolsDict[tool.name] = tool
-        }
-
-        // Use the internal constructor
-        return Tools(toolsDict: toolsDict)
     }
 }

@@ -11,6 +11,11 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         !apiKey.isEmpty
     }
 
+    // Empty tools for testing
+    var emptyTools: Tools {
+        Tools(toolsDict: [:])
+    }
+
     func testSimpleQuery() async throws {
         guard hasAPIKey else {
             throw XCTSkip("API key not set")
@@ -21,7 +26,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         var receivedMessage = false
 
@@ -46,7 +51,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         // First query
         for await _ in await client.query("My name is Alice") {
@@ -79,7 +84,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         for await message in await client.query("Hello") {
             if case .assistant(let msg) = message {
@@ -101,7 +106,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         // First two queries should work
         for await _ in await client.query("Query 1") {}
@@ -128,7 +133,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         // First query
         for await _ in await client.query("My name is Bob") {}
@@ -169,7 +174,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             model: "claude-3-5-sonnet-20241022"
         )
 
-        let client = try await ClaudeClient(options: options)
+        let client = try await ClaudeClient(options: options, tools: emptyTools)
 
         let task = Task {
             for await _ in await client.query("Write a very long story") {

@@ -7,12 +7,17 @@ import Foundation
 ///
 /// - Parameters:
 ///   - prompt: The query or instruction to send to Claude
+///   - tools: The tools to make available
 ///   - options: Optional configuration for customizing behavior
 /// - Returns: AsyncStream of Message objects as they are received from Claude
 ///
 /// # Example
 /// ```swift
-/// for await message in query(prompt: "What is 2 + 2?") {
+/// let tools = Tools {
+///     ReadTool()
+///     WriteTool()
+/// }
+/// for await message in query(prompt: "What is 2 + 2?", tools: tools) {
 ///     if case .assistant(let msg) = message {
 ///         for case .text(let block) in msg.content {
 ///             print(block.text)
@@ -22,13 +27,14 @@ import Foundation
 /// ```
 public func query(
     prompt: String,
+    tools: Tools,
     options: ClaudeAgentOptions? = nil
 ) -> AsyncStream<Message> {
     AsyncStream { continuation in
         let task = Task {
             do {
                 // Create client for this query
-                let client = try await ClaudeClient(options: options ?? .default)
+                let client = try await ClaudeClient(options: options ?? .default, tools: tools)
 
                 // Check for cancellation before starting
                 try Task.checkCancellation()

@@ -43,7 +43,7 @@ public actor ClaudeClient {
 
     // MARK: - Initialization
 
-    public init(options: ClaudeAgentOptions = .default, tools: Tools? = nil, mcpManager: MCPManager? = nil) async throws {
+    public init(options: ClaudeAgentOptions = .default, tools: Tools, mcpManager: MCPManager? = nil) async throws {
         try await self.init(
             options: options,
             apiClient: AnthropicAPIClient(apiKey: options.apiKey),
@@ -53,7 +53,7 @@ public actor ClaudeClient {
     }
 
     /// Initialize with a custom API client (useful for testing)
-    init(options: ClaudeAgentOptions = .default, apiClient: any APIClient, tools: Tools? = nil, mcpManager: MCPManager? = nil) async throws {
+    init(options: ClaudeAgentOptions = .default, apiClient: any APIClient, tools: Tools, mcpManager: MCPManager? = nil) async throws {
         self.options = options
         self.apiClient = apiClient
         self.mcpManager = mcpManager
@@ -63,36 +63,23 @@ public actor ClaudeClient {
             try await mcpManager.start()
         }
 
-        // Create or use provided tools, combining with MCP tools
-        if let providedTools = tools {
-            self.tools = providedTools
-        } else {
-            // Get MCP tools if available
-            var allTools: [any Tool] = []
-
-            if let mcpManager = mcpManager {
-                let mcpTools = try await mcpManager.tools()
+        // Combine provided tools with MCP tools if available
+        if let mcpManager = mcpManager {
+            let mcpTools = try await mcpManager.tools()
+            if !mcpTools.isEmpty {
+                var allTools: [any Tool] = []
+                for toolName in tools.toolNames {
+                    if let tool = tools.tool(named: toolName) {
+                        allTools.append(tool)
+                    }
+                }
                 allTools.append(contentsOf: mcpTools)
-            }
-
-            // Add built-in tools
-            if let workingDir = options.workingDirectory {
-                let builtInTools = Tools(registerBuiltIns: true, workingDirectory: workingDir)
-                for toolName in builtInTools.toolNames {
-                    if let tool = builtInTools.tool(named: toolName) {
-                        allTools.append(tool)
-                    }
-                }
+                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.name, $0) }))
             } else {
-                for toolName in Tools.shared.toolNames {
-                    if let tool = Tools.shared.tool(named: toolName) {
-                        allTools.append(tool)
-                    }
-                }
+                self.tools = tools
             }
-
-            // Create combined tools instance
-            self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.name, $0) }))
+        } else {
+            self.tools = tools
         }
     }
 

@@ -209,9 +209,22 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> (ClaudeClient, ToolOutputManager)? {
+        // Create custom tools set without Grep and List tools
+        let workingDir = options.workingDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+
+        let tools = Tools {
+            ReadTool()
+            WriteTool()
+            UpdateTool()
+            BashTool(workingDirectory: workingDir)
+            GlobTool()
+            FetchTool()
+            WebSearchTool()
+        }
+
         let client: ClaudeClient
         do {
-            client = try await ClaudeClient(options: options, mcpManager: mcpManager)
+            client = try await ClaudeClient(options: options, tools: tools, mcpManager: mcpManager)
         } catch {
             print("\(ANSIColor.red.rawValue)Error initializing client: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
             return nil

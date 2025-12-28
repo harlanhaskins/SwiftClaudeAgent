@@ -139,27 +139,26 @@ public struct GrepTool: Tool {
     ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
 
-        // Try to read file as text
-        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
+        // Stream file line-by-line (efficient for large files)
+        do {
+            for try await line in FileLineReader(url: url) {
+                // Check if line matches pattern
+                if line.text.contains(regex) {
+                    results.append(SearchResult(
+                        filePath: url.path,
+                        lineNumber: line.number,
+                        lineContent: line.text
+                    ))
+
+                    // Early exit when we have enough results
+                    if results.count >= maxResults {
+                        break
+                    }
+                }
+            }
+        } catch {
             // Skip binary files or files we can't read
             return results
-        }
-
-        let lines = contents.split(separator: "\n", omittingEmptySubsequences: false)
-
-        for (index, line) in lines.enumerated() {
-            if results.count >= maxResults {
-                break
-            }
-
-            // Check if line contains a match
-            if line.contains(regex) {
-                results.append(SearchResult(
-                    filePath: url.path,
-                    lineNumber: index + 1,  // 1-based
-                    lineContent: String(line)
-                ))
-            }
         }
 
         return results
