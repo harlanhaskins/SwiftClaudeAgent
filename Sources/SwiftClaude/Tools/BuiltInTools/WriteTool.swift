@@ -5,16 +5,13 @@ import Foundation
 /// The Write tool allows Claude to create or overwrite files with specified content.
 /// It automatically creates parent directories if they don't exist.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `WriteTool` → `"Write"`
-///
 /// # Example
 /// ```swift
 /// let tool = WriteTool()
 /// let input = WriteToolInput(filePath: "/path/to/file.txt", content: "Hello, World!")
 /// let result = try await tool.execute(input: input)
 /// ```
-public struct WriteTool: Tool {
+public struct WriteTool: FileTool {
     public typealias Input = WriteToolInput
 
     public let description = "Write content to a file, creating it if it doesn't exist"
@@ -24,6 +21,12 @@ public struct WriteTool: Tool {
     }
 
     public init() {}
+
+    public var fileOutputLabel: String { "Written Content" }
+
+    public func filePath(from input: WriteToolInput) -> String {
+        input.filePath
+    }
 
     public func formatCallSummary(input: WriteToolInput) -> String {
         truncatePathForDisplay(input.filePath)

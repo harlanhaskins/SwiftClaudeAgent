@@ -12,9 +12,6 @@ import Foundation
 ///
 /// Uses libc glob() for fast pattern matching, with directory expansion for `**` patterns.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `GlobTool` → `"Glob"`
-///
 /// # Example
 /// ```swift
 /// let tool = GlobTool()

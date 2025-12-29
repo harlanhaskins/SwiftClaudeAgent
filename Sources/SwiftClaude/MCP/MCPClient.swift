@@ -1,33 +1,5 @@
+#if os(macOS) || os(Linux)
 import Foundation
-
-/// MCP server configuration
-public struct MCPServerConfig: Codable, Sendable {
-    public let command: String?
-    public let args: [String]?
-    public let env: [String: String]?
-    public let url: String?
-    
-    /// Initialize with command for stdio-based servers
-    public init(command: String, args: [String]? = nil, env: [String: String]? = nil) {
-        self.command = command
-        self.args = args
-        self.env = env
-        self.url = nil
-    }
-    
-    /// Initialize with URL for HTTP-based servers
-    public init(url: String) {
-        self.command = nil
-        self.args = nil
-        self.env = nil
-        self.url = url
-    }
-    
-    /// Check if this is an HTTP-based server
-    public var isHTTP: Bool {
-        url != nil
-    }
-}
 
 /// Client for communicating with MCP servers via stdio
 public actor MCPClient: MCPClientProtocol {
@@ -293,3 +265,4 @@ public actor MCPClient: MCPClientProtocol {
         serverCapabilities
     }
 }
+#endif

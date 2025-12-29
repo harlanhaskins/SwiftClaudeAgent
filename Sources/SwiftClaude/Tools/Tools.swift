@@ -67,7 +67,7 @@ public final class Tools: Sendable {
         var toolsDict: [String: any Tool] = [:]
         let toolList = buildTools()
         for tool in toolList {
-            toolsDict[tool.name] = tool
+            toolsDict[type(of: tool).name] = tool
         }
         self.tools = toolsDict
     }
@@ -120,7 +120,7 @@ public final class Tools: Sendable {
 
         var schemas: [String: JSONSchema] = [:]
         for tool in selectedTools {
-            schemas[tool.name] = tool.inputSchema
+            schemas[type(of: tool).name] = tool.inputSchema
         }
         return schemas
     }
@@ -145,7 +145,7 @@ public final class Tools: Sendable {
             } else {
                 // Custom tools use name/description/schema
                 return AnthropicTool(
-                    name: tool.name,
+                    name: type(of: tool).name,
                     description: tool.description,
                     inputSchema: tool.inputSchema
                 )
@@ -200,5 +200,27 @@ public final class Tools: Sendable {
             return ""
         }
         return tool.formatCallSummary(input: input)
+    }
+
+    /// Extract the file path from a tool execution if it's a FileTool
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - inputData: JSON-encoded input data
+    /// - Returns: The file path if this is a FileTool, nil otherwise
+    public func extractFilePath(toolName: String, inputData: Data) -> String? {
+        guard let tool = tools[toolName] as? any FileTool else {
+            return nil
+        }
+        return _extractFilePathWithConcreteTool(tool, inputData: inputData)
+    }
+
+    /// Helper function to extract file path with concrete tool type
+    private func _extractFilePathWithConcreteTool<T: FileTool>(_ tool: T, inputData: Data) -> String? {
+        let decoder = JSONDecoder()
+        guard let input = try? decoder.decode(T.Input.self, from: inputData) else {
+            return nil
+        }
+        // Use type-erased approach to call filePath(from:)
+        return tool.filePath(from: input)
     }
 }

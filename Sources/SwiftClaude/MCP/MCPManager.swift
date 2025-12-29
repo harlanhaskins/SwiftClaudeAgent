@@ -49,7 +49,12 @@ public actor MCPManager {
             if serverConfig.isHTTP {
                 client = HTTPMCPClient(config: serverConfig)
             } else {
+                #if os(macOS) || os(Linux)
                 client = MCPClient(config: serverConfig)
+                #else
+                print("✗ stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead for server \(serverName)")
+                continue
+                #endif
             }
 
             do {

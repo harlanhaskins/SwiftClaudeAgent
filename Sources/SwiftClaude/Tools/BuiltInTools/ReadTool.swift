@@ -5,16 +5,13 @@ import Foundation
 /// The Read tool allows Claude to read files from the filesystem. It supports
 /// reading entire files or specific line ranges.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `ReadTool` → `"Read"`
-///
 /// # Example
 /// ```swift
 /// let tool = ReadTool()
 /// let input = ReadToolInput(filePath: "/path/to/file.txt", offset: 10, limit: 20)
 /// let result = try await tool.execute(input: input)
 /// ```
-public struct ReadTool: Tool {
+public struct ReadTool: FileTool {
     public typealias Input = ReadToolInput
 
     public let description = "Read file contents from the filesystem"
@@ -30,6 +27,12 @@ public struct ReadTool: Tool {
     private static let maxOutputBytes = OutputLimiter.defaultMaxBytes
 
     public init() {}
+
+    public var fileOutputLabel: String { "File Contents" }
+
+    public func filePath(from input: ReadToolInput) -> String {
+        input.filePath
+    }
 
     public func formatCallSummary(input: ReadToolInput) -> String {
         truncatePathForDisplay(input.filePath)

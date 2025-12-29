@@ -61,7 +61,7 @@ public protocol Tool: Sendable {
     /// For example, `ReadTool` becomes `"Read"`.
     ///
     /// Override this property if you need a custom name.
-    var name: String { get }
+    static var name: String { get }
 
     /// Human-readable description of what this tool does
     var description: String { get }
@@ -83,6 +83,14 @@ public protocol Tool: Sendable {
     /// - Parameter input: The decoded input parameters
     /// - Returns: A concise summary string (without the tool name)
     func formatCallSummary(input: Input) -> String
+
+    /// Label for the input section in detail views.
+    /// Default is "Input"
+    var inputLabel: String { get }
+
+    /// Label for the output section in detail views.
+    /// Default is "Output"
+    var outputLabel: String { get }
 }
 
 // MARK: - Default Implementation
@@ -95,7 +103,7 @@ extension Tool {
     /// - `WriteTool` → `"Write"`
     /// - `BashTool` → `"Bash"`
     /// - `MyCustomTool` → `"MyCustom"`
-    public var name: String {
+    public static var name: String {
         let typeName = _typeName(Self.self, qualified: false)
         if typeName.hasSuffix("Tool") {
             return String(typeName.dropLast(4)) // Remove "Tool"
@@ -107,6 +115,31 @@ extension Tool {
     public func formatCallSummary(input: Input) -> String {
         return ""
     }
+
+    /// Default input label
+    public var inputLabel: String { "Input" }
+
+    /// Default output label
+    public var outputLabel: String { "Output" }
+}
+
+// MARK: - File Tool Protocol
+
+/// Protocol for tools that operate on files.
+/// Provides default implementations for input/output labels and file path extraction.
+public protocol FileTool: Tool {
+    /// The file output type (e.g., "File Contents", "Written Content")
+    var fileOutputLabel: String { get }
+
+    /// Extract the file path from the tool input.
+    /// - Parameter input: The decoded input parameters
+    /// - Returns: The file path this tool operates on
+    func filePath(from input: Input) -> String
+}
+
+extension FileTool {
+    public var inputLabel: String { "File Path" }
+    public var outputLabel: String { fileOutputLabel }
 }
 
 // MARK: - Display Helpers
@@ -119,15 +152,36 @@ public func truncateForDisplay(_ str: String, maxLength: Int) -> String {
 
 /// Truncate a file path, keeping the filename and some context
 public func truncatePathForDisplay(_ path: String, maxLength: Int = 50) -> String {
-    guard path.count > maxLength else { return path }
-    let components = path.split(separator: "/")
+    // First, try to make it relative to home directory
+    let relativePath = makePathRelative(path)
+
+    // Then truncate if still too long
+    guard relativePath.count > maxLength else { return relativePath }
+    let components = relativePath.split(separator: "/")
     if components.count <= 3 {
-        return path
+        return relativePath
     }
     // Keep first component, ellipsis, and last 2 components
     let first = components.first ?? ""
     let last = components.suffix(2).joined(separator: "/")
-    return "/\(first)/…/\(last)"
+    return "\(first)/…/\(last)"
+}
+
+public func makePathRelative(_ path: String) -> String {
+    // Try to make path relative to home directory
+    if let homeDir = ProcessInfo.processInfo.environment["HOME"] {
+        if path.hasPrefix(homeDir) {
+            let relativePath = String(path.dropFirst(homeDir.count))
+            if relativePath.hasPrefix("/") {
+                return "~" + relativePath
+            } else if !relativePath.isEmpty {
+                return "~/" + relativePath
+            } else {
+                return "~"
+            }
+        }
+    }
+    return path
 }
 
 // MARK: - Tool Result

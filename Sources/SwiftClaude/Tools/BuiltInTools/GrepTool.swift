@@ -5,9 +5,6 @@ import Foundation
 /// The Grep tool allows Claude to search for text patterns within files.
 /// It supports regular expressions and can search across multiple files.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `GrepTool` → `"Grep"`
-///
 /// # Example
 /// ```swift
 /// let tool = GrepTool()

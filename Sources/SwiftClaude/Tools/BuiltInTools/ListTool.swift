@@ -5,9 +5,6 @@ import Foundation
 /// The List tool allows Claude to browse filesystem directories.
 /// It supports depth-limited recursive listing and showing hidden files.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `ListTool` → `"List"`
-///
 /// # Example
 /// ```swift
 /// let tool = ListTool()

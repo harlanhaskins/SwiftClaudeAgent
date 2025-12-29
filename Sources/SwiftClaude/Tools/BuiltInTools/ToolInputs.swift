@@ -259,6 +259,61 @@ public struct ListToolInput: Codable, Sendable, Equatable {
     }
 }
 
+// MARK: - JavaScript Tool Input
+
+public struct JavaScriptToolInput: Codable, Sendable, Equatable {
+    public let code: String
+    public let input: String?
+
+    public init(code: String, input: String? = nil) {
+        self.code = code
+        self.input = input
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "code": .string(description: "JavaScript code to execute. Can be a single expression or multiple statements. The value of the last expression will be JSON-serialized and returned."),
+                "input": .string(description: "Optional JSON string to pass as input to the script. Will be available as the global variable 'input' in the JavaScript context.")
+            ],
+            required: ["code"]
+        )
+    }
+}
+
+// MARK: - WebCanvas Tool Input
+
+public struct WebCanvasToolInput: Codable, Sendable, Equatable {
+    public let html: String
+    public let aspectRatio: String?
+    public let input: String?
+
+    public init(html: String, aspectRatio: String? = nil, input: String? = nil) {
+        self.html = html
+        self.aspectRatio = aspectRatio
+        self.input = input
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case html
+        case aspectRatio = "aspect_ratio"
+        case input
+    }
+
+    /// JSON Schema for this input type
+    public static var schema: JSONSchema {
+        .object(
+            properties: [
+                "html": .string(description: "Complete HTML content to render. Can include inline CSS and JavaScript. The canvas will be displayed in a small scrollable container with a defined aspect ratio and border, so designs should be responsive. Automatically supports light/dark mode via CSS variables: --text-color, --background-color, --secondary-color. Keep designs minimalistic."),
+                "aspect_ratio": .string(description: "Aspect ratio for the canvas (e.g., \"16:9\", \"4:3\", \"1:1\"). Defaults to \"1:1\"."),
+                "input": .string(description: "Optional JSON string to pass as input. Will be available as the global variable 'input' in the JavaScript context.")
+            ],
+            required: ["html"]
+        )
+    }
+}
+
 // MARK: - Fetch Tool Input
 
 public struct FetchToolInput: Codable, Sendable, Equatable {

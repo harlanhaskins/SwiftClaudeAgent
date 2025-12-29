@@ -74,7 +74,7 @@ public actor ClaudeClient {
                     }
                 }
                 allTools.append(contentsOf: mcpTools)
-                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.name, $0) }))
+                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { (type(of: $0).name, $0) }))
             } else {
                 self.tools = tools
             }
@@ -167,6 +167,38 @@ public actor ClaudeClient {
     public func importSession(from string: String) throws {
         let data = Data(string.utf8)
         try importSession(from: data)
+    }
+
+    // MARK: - Tool Formatting
+
+    /// Format a concise summary of a tool call for display
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - input: The tool input
+    /// - Returns: A concise summary string (without the tool name), or empty string if tool not found
+    public func formatToolCallSummary(toolName: String, input: ToolInput) -> String {
+        let summary = tools.formatCallSummary(toolName: toolName, inputData: input.toData())
+
+        // Convert absolute paths to relative if within working directory
+        guard let workingDir = options.workingDirectory?.path,
+              summary.hasPrefix("/"),
+              summary.hasPrefix(workingDir) else {
+            return summary
+        }
+
+        // Convert to relative path
+        let relativePath = String(summary.dropFirst(workingDir.count))
+        let cleanPath = relativePath.hasPrefix("/") ? String(relativePath.dropFirst()) : relativePath
+        return cleanPath.isEmpty ? "." : cleanPath
+    }
+
+    /// Extract the file path from a tool execution if it's a FileTool.
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - input: The tool input
+    /// - Returns: The file path if this is a FileTool, nil otherwise
+    public func extractFilePath(toolName: String, input: ToolInput) -> String? {
+        return tools.extractFilePath(toolName: toolName, inputData: input.toData())
     }
 
     // MARK: - Hooks
@@ -302,7 +334,6 @@ public actor ClaudeClient {
                         let result = await executeToolUse(toolUse)
 
                         // Create result message
-                        // Note: content should be text blocks directly, not wrapped in toolResult
                         let resultMessage = Message.result(ResultMessage(
                             toolUseId: toolUse.id,
                             content: [.text(TextBlock(text: result.content))],
@@ -553,19 +584,27 @@ public actor ClaudeClient {
     private func compactHistoryIfNeeded() async throws {
         guard options.compactionEnabled else { return }
 
-        // Check if we need to compact
+        // Check if we need to compact based on token count
         let messageCount = conversationHistory.count
         let estimatedTokenCount = estimateTokens(conversationHistory)
 
-        let shouldCompactByMessages = messageCount > options.compactionThreshold
-        let shouldCompactByTokens = estimatedTokenCount > Int(Double(options.contextWindowLimit) * 0.7)
+        guard estimatedTokenCount > options.compactionTokenThreshold else { return }
 
-        guard shouldCompactByMessages || shouldCompactByTokens else { return }
+        // Split history: keep recent messages based on token budget
+        var recentMessages: [Message] = []
+        var recentTokenCount = 0
+        var oldMessages: [Message] = []
 
-        // Split history: recent messages vs old messages
-        let recentCount = min(options.keepRecentMessages, conversationHistory.count)
-        let recentMessages = Array(conversationHistory.suffix(recentCount))
-        let oldMessages = Array(conversationHistory.prefix(conversationHistory.count - recentCount))
+        // Iterate from most recent backwards, collecting messages until we hit token budget
+        for message in conversationHistory.reversed() {
+            let messageTokens = estimateTokens([message])
+            if recentTokenCount + messageTokens <= options.keepRecentTokens {
+                recentMessages.insert(message, at: 0)
+                recentTokenCount += messageTokens
+            } else {
+                oldMessages.insert(message, at: 0)
+            }
+        }
 
         guard !oldMessages.isEmpty else { return }
 

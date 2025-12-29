@@ -11,8 +11,8 @@ public struct ClaudeAgentOptions: Sendable {
 
     // Auto-compaction settings
     public let compactionEnabled: Bool
-    public let compactionThreshold: Int
-    public let keepRecentMessages: Int
+    public let compactionTokenThreshold: Int
+    public let keepRecentTokens: Int
     public let contextWindowLimit: Int
 
     public init(
@@ -22,8 +22,8 @@ public struct ClaudeAgentOptions: Sendable {
         model: String = "claude-sonnet-4-5-20250929",
         workingDirectory: URL? = nil,
         compactionEnabled: Bool = false,
-        compactionThreshold: Int = 20,
-        keepRecentMessages: Int = 10,
+        compactionTokenThreshold: Int = 120_000,
+        keepRecentTokens: Int = 50_000,
         contextWindowLimit: Int = 150_000
     ) {
         self.systemPrompt = systemPrompt
@@ -32,8 +32,8 @@ public struct ClaudeAgentOptions: Sendable {
         self.model = model
         self.workingDirectory = workingDirectory
         self.compactionEnabled = compactionEnabled
-        self.compactionThreshold = compactionThreshold
-        self.keepRecentMessages = keepRecentMessages
+        self.compactionTokenThreshold = compactionTokenThreshold
+        self.keepRecentTokens = keepRecentTokens
         self.contextWindowLimit = contextWindowLimit
     }
 

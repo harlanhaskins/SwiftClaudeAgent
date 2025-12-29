@@ -1,12 +1,10 @@
+#if os(macOS) || os(Linux)
 import Foundation
 
 /// Tool for executing bash commands.
 ///
 /// The Bash tool allows Claude to run shell commands in a subprocess. Commands are
 /// executed with a configurable timeout and working directory.
-///
-/// # Tool Name
-/// Name is automatically derived from type: `BashTool` → `"Bash"`
 ///
 /// # Example
 /// ```swift
@@ -166,3 +164,4 @@ private actor ProcessCoordinator {
         return true
     }
 }
+#endif

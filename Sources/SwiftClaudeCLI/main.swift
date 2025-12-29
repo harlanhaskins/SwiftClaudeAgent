@@ -26,7 +26,7 @@ class TerminalHandler {
         originalTermios = raw
         
         // Disable canonical mode and echo
-        raw.c_lflag &= ~UInt32(ICANON | ECHO)
+        raw.c_lflag &= ~UInt(ICANON | ECHO)
         // Set minimum bytes to read and timeout
         raw.c_cc.16 = 0  // VMIN
         raw.c_cc.17 = 1  // VTIME (0.1 second)

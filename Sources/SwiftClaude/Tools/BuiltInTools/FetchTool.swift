@@ -9,9 +9,6 @@ import FoundationNetworking
 /// The Fetch tool allows Claude to make HTTP GET requests to fetch web content.
 /// It supports custom headers and timeout configuration.
 ///
-/// # Tool Name
-/// Name is automatically derived from type: `FetchTool` → `"Fetch"`
-///
 /// # Example
 /// ```swift
 /// let tool = FetchTool()

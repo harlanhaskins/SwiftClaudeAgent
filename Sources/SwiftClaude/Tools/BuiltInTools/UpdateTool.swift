@@ -56,7 +56,7 @@ import Foundation
 ///   11:     return 100
 ///   12: }
 /// ```
-public struct UpdateTool: Tool {
+public struct UpdateTool: FileTool {
     public typealias Input = UpdateToolInput
 
     public let description = "Update specific portions of a file by replacing content within line ranges. Supports single or multiple replacements in one operation."
@@ -66,6 +66,12 @@ public struct UpdateTool: Tool {
     }
 
     public init() {}
+
+    public var fileOutputLabel: String { "Updated Content" }
+
+    public func filePath(from input: UpdateToolInput) -> String {
+        input.filePath
+    }
 
     public func formatCallSummary(input: UpdateToolInput) -> String {
         truncatePathForDisplay(input.filePath)
