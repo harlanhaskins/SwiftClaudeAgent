@@ -74,7 +74,7 @@ public actor ClaudeClient {
                     }
                 }
                 allTools.append(contentsOf: mcpTools)
-                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { (type(of: $0).name, $0) }))
+                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.instanceName, $0) }))
             } else {
                 self.tools = tools
             }
@@ -199,6 +199,22 @@ public actor ClaudeClient {
     /// - Returns: The file path if this is a FileTool, nil otherwise
     public func extractFilePath(toolName: String, input: ToolInput) -> String? {
         return tools.extractFilePath(toolName: toolName, inputData: input.toData())
+    }
+
+    /// Get metadata for a tool (e.g., MCP server name for MCP tools).
+    /// - Parameter toolName: Name of the tool
+    /// - Returns: Dictionary of metadata, or empty if tool not found or has no metadata
+    public func getToolMetadata(toolName: String) -> [String: String] {
+        guard let tool = tools.tool(named: toolName) else {
+            return [:]
+        }
+
+        // Check if this is an MCP tool
+        if let mcpTool = tool as? MCPTool {
+            return ["server": mcpTool.serverName]
+        }
+
+        return [:]
     }
 
     // MARK: - Hooks

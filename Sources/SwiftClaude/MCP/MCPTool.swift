@@ -6,8 +6,9 @@ public struct MCPTool: Tool, Sendable {
 
     private let definition: MCPToolDefinition
     private let client: any MCPClientProtocol
+    public let serverName: String
 
-    public var name: String {
+    public var instanceName: String {
         definition.name
     }
 
@@ -19,9 +20,10 @@ public struct MCPTool: Tool, Sendable {
         definition.inputSchema
     }
 
-    public init(definition: MCPToolDefinition, client: any MCPClientProtocol) {
+    public init(definition: MCPToolDefinition, client: any MCPClientProtocol, serverName: String) {
         self.definition = definition
         self.client = client
+        self.serverName = serverName
     }
 
     public func execute(input: MCPToolInput) async throws -> ToolResult {

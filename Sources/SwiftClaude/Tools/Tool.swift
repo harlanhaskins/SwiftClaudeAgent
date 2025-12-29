@@ -55,13 +55,19 @@ public protocol Tool: Sendable {
     /// The input type for this tool. Must be Codable and Sendable.
     associatedtype Input: Codable & Sendable
 
-    /// Unique identifier for this tool.
+    /// Unique identifier for this tool (static).
     ///
     /// By default, this is the type name with "Tool" suffix removed.
     /// For example, `ReadTool` becomes `"Read"`.
     ///
     /// Override this property if you need a custom name.
     static var name: String { get }
+
+    /// Instance name for this tool.
+    ///
+    /// By default, returns the static name. Override this for tools that need
+    /// dynamic names (like MCPTool which uses the server's tool name).
+    var instanceName: String { get }
 
     /// Human-readable description of what this tool does
     var description: String { get }
@@ -109,6 +115,11 @@ extension Tool {
             return String(typeName.dropLast(4)) // Remove "Tool"
         }
         return typeName
+    }
+
+    /// Default implementation: returns the static name
+    public var instanceName: String {
+        Self.name
     }
 
     /// Default implementation: returns empty string

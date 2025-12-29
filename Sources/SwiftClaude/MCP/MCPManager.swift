@@ -9,16 +9,14 @@ public struct MCPConfiguration: Codable, Sendable {
     }
 
     /// Load configuration from file
-    public static func load(from path: String) throws -> MCPConfiguration {
-        let url = URL(fileURLWithPath: path)
+    public static func load(from url: URL) throws -> MCPConfiguration {
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         return try decoder.decode(MCPConfiguration.self, from: data)
     }
 
     /// Save configuration to file
-    public func save(to path: String) throws {
-        let url = URL(fileURLWithPath: path)
+    public func save(to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(self)
@@ -93,7 +91,7 @@ public actor MCPManager {
                 let definitions = try await client.listTools()
 
                 for definition in definitions {
-                    let tool = MCPTool(definition: definition, client: client)
+                    let tool = MCPTool(definition: definition, client: client, serverName: serverName)
                     allTools.append(tool)
                 }
             } catch {
@@ -118,43 +116,26 @@ public actor MCPManager {
 // MARK: - Default Configuration Path
 
 extension MCPManager {
-    /// Default configuration file path: ~/.swift-claude/mcp-servers.json
-    public static var defaultConfigPath: String {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        return homeDir.appendingPathComponent(".swift-claude/mcp-servers.json").path
-    }
-
     /// Load manager from default configuration file
-    public static func loadDefault() throws -> MCPManager? {
-        let path = defaultConfigPath
-
-        guard FileManager.default.fileExists(atPath: path) else {
+    public static func loadDefault(directory: URL) throws -> MCPManager? {
+        guard FileManager.default.fileExists(atPath: directory.path) else {
             return nil
         }
 
-        let config = try MCPConfiguration.load(from: path)
+        let config = try MCPConfiguration.load(from: directory)
         return MCPManager(configuration: config)
     }
 
-    /// Create a default configuration file with example servers
-    public static func createDefaultConfig() throws {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let swiftClaudeDir = homeDir.appendingPathComponent(".swift-claude")
-
+    /// Create a default configuration file with empty servers
+    public static func createDefaultConfig(directory: URL) throws {
         // Create directory if needed
         try FileManager.default.createDirectory(
-            at: swiftClaudeDir,
+            at: directory,
             withIntermediateDirectories: true
         )
 
         // Create example configuration
-        let config = MCPConfiguration(mcpServers: [
-            "macos-notify": MCPServerConfig(
-                command: "npx",
-                args: ["-y", "macos-notify-mcp"]
-            )
-        ])
-
-        try config.save(to: defaultConfigPath)
+        let config = MCPConfiguration(mcpServers: [:])
+        try config.save(to: directory.appending(path: "mcp-servers.json"))
     }
 }

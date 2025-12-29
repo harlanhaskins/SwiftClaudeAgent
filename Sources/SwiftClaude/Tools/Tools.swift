@@ -67,7 +67,7 @@ public final class Tools: Sendable {
         var toolsDict: [String: any Tool] = [:]
         let toolList = buildTools()
         for tool in toolList {
-            toolsDict[type(of: tool).name] = tool
+            toolsDict[tool.instanceName] = tool
         }
         self.tools = toolsDict
     }
@@ -120,7 +120,7 @@ public final class Tools: Sendable {
 
         var schemas: [String: JSONSchema] = [:]
         for tool in selectedTools {
-            schemas[type(of: tool).name] = tool.inputSchema
+            schemas[tool.instanceName] = tool.inputSchema
         }
         return schemas
     }
@@ -145,7 +145,7 @@ public final class Tools: Sendable {
             } else {
                 // Custom tools use name/description/schema
                 return AnthropicTool(
-                    name: type(of: tool).name,
+                    name: tool.instanceName,
                     description: tool.description,
                     inputSchema: tool.inputSchema
                 )

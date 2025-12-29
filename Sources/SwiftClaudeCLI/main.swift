@@ -103,6 +103,8 @@ enum ANSIColor: String {
 
 @main
 struct SwiftClaudeCLI: AsyncParsableCommand {
+    static let configDir = URL.homeDirectory.appending(path: ".swift-claude")
+
     static let configuration = CommandConfiguration(
         commandName: "swift-claude",
         abstract: "Interactive Claude AI agent with tool support",
@@ -217,7 +219,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         )
 
         // Load MCP configuration if available
-        let mcpManager = try? MCPManager.loadDefault()
+        let mcpManager = try? MCPManager.loadDefault(directory: Self.configDir)
 
         // Run in appropriate mode
         if interactive {
@@ -540,10 +542,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     }
 
     func loadAPIKey() -> String? {
-        // Check stored API key
-        let configDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".swift-claude")
-        let keyPath = configDir.appendingPathComponent("anthropic-api-key")
+        let keyPath = Self.configDir.appendingPathComponent("anthropic-api-key")
 
         // Try to read existing key
         if FileManager.default.fileExists(atPath: keyPath.path),
@@ -565,7 +564,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Create config directory if it doesn't exist
         do {
-            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: Self.configDir, withIntermediateDirectories: true)
 
             // Save the API key
             try apiKey.write(to: keyPath, atomically: true, encoding: .utf8)
