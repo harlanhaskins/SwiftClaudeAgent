@@ -44,8 +44,8 @@ public actor SubAgentCoordinator {
     public init(
         apiKey: String,
         defaultTools: Tools,
-        defaultModel: String = "claude-sonnet-4-5-20250929",
-        summaryModel: String = "claude-sonnet-4-5-20250929"
+        defaultModel: String = defaultClaudeModel,
+        summaryModel: String = defaultClaudeModel
     ) {
         self.apiKey = apiKey
         self.defaultTools = defaultTools
@@ -277,12 +277,12 @@ public actor SubAgentCoordinator {
                         output += textBlock.text
                     case .toolUse(let toolUse):
                         toolCallCount += 1
-                        // Report tool call with parameters
-                        let params = extractToolParameters(toolUse.input)
+                        // Report tool call with summary
+                        let summary = await client.formatToolCallSummary(toolName: toolUse.name, input: toolUse.input)
                         await reportProgress(.toolCall(
                             taskId: taskId,
                             toolName: toolUse.name,
-                            parameters: params
+                            summary: summary
                         ))
                     default:
                         break
@@ -305,28 +305,6 @@ public actor SubAgentCoordinator {
         }
 
         return (output, turnCount, toolCallCount)
-    }
-
-    /// Extract parameters from tool input for display
-    private func extractToolParameters(_ input: ToolInput) -> [String: String] {
-        var params: [String: String] = [:]
-        let dict = input.toDictionary()
-        for (key, value) in dict {
-            // Skip large content fields
-            if key == "content" || key == "new_content" || key == "replacements" {
-                continue
-            }
-            if let s = value as? String {
-                params[key] = s
-            } else if let i = value as? Int {
-                params[key] = String(i)
-            } else if let d = value as? Double {
-                params[key] = String(d)
-            } else if let b = value as? Bool {
-                params[key] = String(b)
-            }
-        }
-        return params
     }
 
     /// Summarize long output using Claude
@@ -381,7 +359,7 @@ public actor SubAgentCoordinator {
 /// Progress updates from sub-agent execution
 public enum SubAgentProgress: Sendable {
     case started(taskId: String, description: String)
-    case toolCall(taskId: String, toolName: String, parameters: [String: String])
+    case toolCall(taskId: String, toolName: String, summary: String)
     case messageReceived(taskId: String, turnCount: Int, toolCallCount: Int)
     case completed(taskId: String, result: SubAgentResult)
     case failed(taskId: String, error: String)

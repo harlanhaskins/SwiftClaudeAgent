@@ -135,13 +135,13 @@ public struct SubAgentTool: Tool {
         Provide 1 task for focused work, or 2-5 tasks for parallel execution.
         """
 
-    private let apiKey: String
-    private let tools: Tools
-    private let model: String
+    internal let apiKey: String
+    public let tools: Tools?
+    internal let model: String
 
     /// Callback for displaying progress (tool calls, status updates)
     public typealias OutputCallback = @Sendable (SubAgentOutput) -> Void
-    private let outputCallback: OutputCallback?
+    internal let outputCallback: OutputCallback?
 
     public var inputSchema: JSONSchema {
         SubAgentToolInput.schema
@@ -158,13 +158,13 @@ public struct SubAgentTool: Tool {
     /// Initialize a SubAgent tool
     /// - Parameters:
     ///   - apiKey: Anthropic API key for the sub-agent
-    ///   - tools: Tools available to the sub-agent
+    ///   - tools: Tools available to the sub-agent (optional - will inherit from parent if not specified)
     ///   - model: Model to use for sub-agents
     ///   - outputCallback: Optional callback for progress display
     public init(
         apiKey: String,
-        tools: Tools,
-        model: String = "claude-sonnet-4-5-20250929",
+        tools: Tools? = nil,
+        model: String = defaultClaudeModel,
         outputCallback: OutputCallback? = nil
     ) {
         self.apiKey = apiKey
@@ -180,6 +180,10 @@ public struct SubAgentTool: Tool {
 
         guard input.tasks.count <= 5 else {
             throw ToolError.invalidInput("Maximum 5 tasks allowed (got \(input.tasks.count))")
+        }
+
+        guard let tools = tools else {
+            throw ToolError.executionFailed("SubAgentTool.tools not configured. ClaudeClient should have configured this during initialization.")
         }
 
         // Validate timeouts
@@ -202,8 +206,8 @@ public struct SubAgentTool: Tool {
                 switch progress {
                 case .started(_, let description):
                     outputCallback(.started(description: description))
-                case .toolCall(_, let toolName, let parameters):
-                    outputCallback(.toolCall(toolName: toolName, parameters: parameters))
+                case .toolCall(_, let toolName, let summary):
+                    outputCallback(.toolCall(toolName: toolName, summary: summary))
                 case .completed(_, let result):
                     outputCallback(.completed(description: result.description, success: result.success))
                 case .failed(_, let error):
@@ -301,7 +305,7 @@ public struct SubAgentTool: Tool {
 /// Output events from sub-agent execution for display
 public enum SubAgentOutput: Sendable {
     case started(description: String)
-    case toolCall(toolName: String, parameters: [String: String])
+    case toolCall(toolName: String, summary: String)
     case completed(description: String, success: Bool)
     case failed(error: String)
 }

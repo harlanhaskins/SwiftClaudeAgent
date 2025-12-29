@@ -178,13 +178,12 @@ public struct ThinkingBlock: Sendable, Codable {
     }
 }
 
-// Fixed: Use Codable dictionary instead of [String: Any]
 public struct ToolUseBlock: Sendable, Codable {
     public let id: String
     public let name: String
-    public let input: ToolInput
+    public let input: RawToolInput
 
-    public init(id: String, name: String, input: ToolInput) {
+    public init(id: String, name: String, input: RawToolInput) {
         self.id = id
         self.name = name
         self.input = input
@@ -194,13 +193,15 @@ public struct ToolUseBlock: Sendable, Codable {
     public init(id: String, name: String, input: [String: Any]) {
         self.id = id
         self.name = name
-        self.input = ToolInput(dict: input)
+        self.input = RawToolInput(dict: input)
     }
 }
 
+public typealias ToolInput = Sendable & Codable
+
 // Sendable wrapper for tool input
-public struct ToolInput: Sendable, Codable {
-    private let data: Data
+public struct RawToolInput: Sendable, Codable {
+    public let data: Data
 
     public init(dict: [String: Any]) {
         // Store as JSON data
@@ -213,10 +214,6 @@ public struct ToolInput: Sendable, Codable {
 
     public func toDictionary() -> [String: Any] {
         (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-    }
-
-    public func toData() -> Data {
-        data
     }
 }
 

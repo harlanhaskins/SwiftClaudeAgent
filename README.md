@@ -88,7 +88,7 @@ let options = ClaudeAgentOptions(
     maxTurns: Int?,               // Maximum conversation turns
     permissionMode: PermissionMode, // Tool permission mode
     apiKey: String,               // Anthropic API key
-    model: String,                // Model to use (default: claude-sonnet-4-5-20250929)
+    model: String,                // Model to use (default: claude-sonnet-4-5)
     workingDirectory: URL?        // Working directory for Bash tool
 )
 ```

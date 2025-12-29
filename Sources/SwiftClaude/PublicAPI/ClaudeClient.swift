@@ -64,6 +64,7 @@ public actor ClaudeClient {
         }
 
         // Combine provided tools with MCP tools if available
+        var combinedTools = tools
         if let mcpManager = mcpManager {
             let mcpTools = try await mcpManager.tools()
             if !mcpTools.isEmpty {
@@ -74,13 +75,35 @@ public actor ClaudeClient {
                     }
                 }
                 allTools.append(contentsOf: mcpTools)
-                self.tools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.instanceName, $0) }))
-            } else {
-                self.tools = tools
+                combinedTools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.instanceName, $0) }))
             }
-        } else {
-            self.tools = tools
         }
+
+        // Configure SubAgentTools to inherit parent tools (excluding themselves)
+        self.tools = Self.configureSubAgentTools(combinedTools)
+    }
+
+    /// Configure SubAgentTools to inherit parent tools
+    private static func configureSubAgentTools(_ tools: Tools) -> Tools {
+        var configuredTools: [any Tool] = []
+        let toolsForSubAgents = tools.excluding(SubAgentTool.self)
+
+        for tool in tools.allTools {
+            if let subAgentTool = tool as? SubAgentTool, subAgentTool.tools == nil {
+                // Create new SubAgentTool with configured tools
+                let configured = SubAgentTool(
+                    apiKey: subAgentTool.apiKey,
+                    tools: toolsForSubAgents,
+                    model: subAgentTool.model,
+                    outputCallback: subAgentTool.outputCallback
+                )
+                configuredTools.append(configured)
+            } else {
+                configuredTools.append(tool)
+            }
+        }
+
+        return Tools(configuredTools)
     }
 
     // MARK: - Public API
@@ -176,8 +199,8 @@ public actor ClaudeClient {
     ///   - toolName: Name of the tool
     ///   - input: The tool input
     /// - Returns: A concise summary string (without the tool name), or empty string if tool not found
-    public func formatToolCallSummary(toolName: String, input: ToolInput) -> String {
-        let summary = tools.formatCallSummary(toolName: toolName, inputData: input.toData())
+    public func formatToolCallSummary(toolName: String, input: any ToolInput) -> String {
+        let summary = tools.formatCallSummary(toolName: toolName, input: input)
 
         // Convert absolute paths to relative if within working directory
         guard let workingDir = options.workingDirectory?.path,
@@ -198,7 +221,7 @@ public actor ClaudeClient {
     ///   - input: The tool input
     /// - Returns: The file path if this is a FileTool, nil otherwise
     public func extractFilePath(toolName: String, input: ToolInput) -> String? {
-        return tools.extractFilePath(toolName: toolName, inputData: input.toData())
+        return tools.extractFilePath(toolName: toolName, input: input)
     }
 
     /// Get metadata for a tool (e.g., MCP server name for MCP tools).
@@ -217,13 +240,45 @@ public actor ClaudeClient {
         return [:]
     }
 
+    private static let decoder = JSONDecoder()
+
+    /// Decode tool input for display purposes.
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - inputData: Raw JSON input data
+    /// - Returns: Decoded input as Any, or nil if decoding fails
+    public func decodeToolInput(toolName: String, inputData: Data) -> (any ToolInput)? {
+        guard let tool = tools.tool(named: toolName) else {
+            return nil
+        }
+        func _decode<T: Tool>(_ tool: T) -> T.Input? {
+            try? Self.decoder.decode(T.Input.self, from: inputData)
+        }
+        return _decode(tool)
+    }
+
+    /// Decode tool output for display purposes.
+    /// - Parameters:
+    ///   - toolName: Name of the tool
+    ///   - outputData: Raw JSON output data
+    /// - Returns: Decoded output as Any, or nil if decoding fails or no structured output exists
+    public func decodeToolOutput(toolName: String, outputData: Data) -> (any ToolOutput)? {
+        guard let tool = tools.tool(named: toolName) else {
+            return nil
+        }
+        func _decode<T: Tool>(_ tool: T) -> T.Output? {
+            try? Self.decoder.decode(T.Output.self, from: outputData)
+        }
+        return _decode(tool)
+    }
+
     // MARK: - Hooks
 
     /// Register a hook handler for a specific lifecycle event.
     /// - Parameters:
     ///   - type: The hook type to register for
     ///   - handler: The handler to call when the hook fires
-    public func addHook<T: Sendable>(_ type: HookType, handler: @escaping @Sendable (T) async throws -> Void) {
+    public func addHook<T: Sendable>(_ type: HookType, handler: @escaping @Sendable (T) async -> Void) {
         let hookHandler = HookHandler(handler)
         if hooks[type] == nil {
             hooks[type] = []
@@ -248,12 +303,7 @@ public actor ClaudeClient {
     private func fireHooks<T: Sendable>(_ type: HookType, context: T) async {
         guard let handlers = hooks[type] else { return }
         for handler in handlers {
-            do {
-                try await handler.handle(context)
-            } catch {
-                // Hooks shouldn't prevent execution, just log errors
-                print("Hook error (\(type)): \(error)")
-            }
+            await handler.handle(context)
         }
     }
 
@@ -407,14 +457,14 @@ public actor ClaudeClient {
         await fireHooks(.beforeToolExecution, context: BeforeToolExecutionContext(
             toolName: toolUse.name,
             toolUseId: toolUse.id,
-            input: toolUse.input.toData()
+            input: toolUse.input.data
         ))
 
         do {
             let result = try await tools.execute(
                 toolName: toolUse.name,
                 toolUseId: toolUse.id,
-                inputData: toolUse.input.toData()
+                inputData: toolUse.input.data
             )
 
             // Fire afterToolExecution hook

@@ -103,19 +103,19 @@ public struct MessageContext: Sendable {
 
 /// Type-erased hook handler
 public struct HookHandler: Sendable {
-    private let _handle: @Sendable (Any) async throws -> Void
+    private let _handle: @Sendable (Any) async -> Void
 
-    public init<T: Sendable>(_ handler: @escaping @Sendable (T) async throws -> Void) {
+    public init<T: Sendable>(_ handler: @escaping @Sendable (T) async -> Void) {
         self._handle = { context in
             guard let typedContext = context as? T else {
                 return
             }
-            try await handler(typedContext)
+            await handler(typedContext)
         }
     }
 
-    func handle(_ context: Any) async throws {
-        try await _handle(context)
+    func handle(_ context: Any) async {
+        await _handle(context)
     }
 }
 

@@ -19,6 +19,10 @@ public struct ToolsBuilder {
         Array(tools)
     }
 
+    public static func buildBlock(_ tools: [any Tool]) -> [any Tool] {
+        tools
+    }
+
     public static func buildOptional(_ tool: (any Tool)?) -> [any Tool] {
         tool.map { [$0] } ?? []
     }
@@ -63,10 +67,23 @@ public final class Tools: Sendable {
     ///     BashTool(workingDirectory: workingDir)
     /// }
     /// ```
-    public init(@ToolsBuilder _ buildTools: () -> [any Tool]) {
+    public convenience init(@ToolsBuilder _ buildTools: () -> [any Tool]) {
+        self.init(buildTools())
+    }
+
+    /// Initialize with a set of tools.
+    ///
+    /// # Example
+    /// ```swift
+    /// let tools = Tools([
+    ///     ReadTool(),
+    ///     WriteTool(),
+    ///     BashTool(workingDirectory: workingDir)
+    /// ])
+    /// ```
+    public init(_ tools: [any Tool]) {
         var toolsDict: [String: any Tool] = [:]
-        let toolList = buildTools()
-        for tool in toolList {
+        for tool in tools {
             toolsDict[tool.instanceName] = tool
         }
         self.tools = toolsDict
@@ -74,7 +91,7 @@ public final class Tools: Sendable {
 
     /// Initialize with a dictionary of tools
     /// - Parameter toolsDict: Dictionary mapping tool names to tool instances
-    public init(toolsDict: [String: any Tool]) {
+    init(toolsDict: [String: any Tool]) {
         self.tools = toolsDict
     }
 
@@ -96,12 +113,34 @@ public final class Tools: Sendable {
 
     /// All registered tool names
     public var toolNames: [String] {
-        return Array(tools.keys).sorted()
+        return tools.keys.sorted()
+    }
+
+    /// All registered tools
+    internal var allTools: some Collection<any Tool> {
+        return tools.values
     }
 
     /// Number of registered tools
     public var count: Int {
         return tools.count
+    }
+
+    /// Create a new Tools instance excluding tools of the specified types
+    /// - Parameter types: Tool types to exclude
+    /// - Returns: A new Tools instance without the excluded tool types
+    public func excluding(_ types: [any Tool.Type]) -> Tools {
+        let filtered = tools.filter { (_, tool) in
+            !types.contains { type(of: tool) == $0 }
+        }
+        return Tools(toolsDict: filtered)
+    }
+
+    /// Create a new Tools instance excluding tools of the specified types
+    /// - Parameter types: Tool types to exclude (variadic)
+    /// - Returns: A new Tools instance without the excluded tool types
+    public func excluding(_ types: any Tool.Type...) -> Tools {
+        excluding(types)
     }
 
     // MARK: - API Integration
@@ -166,17 +205,11 @@ public final class Tools: Sendable {
         guard let tool = tools[toolName] else {
             throw ToolError.notFound("Tool '\(toolName)' not found")
         }
-
-        // Use _openExistential to convert `any Tool` to concrete type
-        return try await _executeWithConcreteTool(tool, inputData: inputData)
-    }
-
-    /// Helper function to execute with concrete tool type
-    /// Uses _openExistential to get access to the associated Input type
-    private func _executeWithConcreteTool<T: Tool>(_ tool: T, inputData: Data) async throws -> ToolResult {
-        let decoder = JSONDecoder()
-        let input = try decoder.decode(T.Input.self, from: inputData)
-        return try await tool.execute(input: input)
+        func _execute<T: Tool>(_ tool: T) async throws -> ToolResult {
+            let input = try JSONDecoder().decode(T.Input.self, from: inputData)
+            return try await tool.execute(input: input)
+        }
+        return try await _execute(tool)
     }
 
     // MARK: - Display
@@ -186,20 +219,17 @@ public final class Tools: Sendable {
     ///   - toolName: Name of the tool
     ///   - inputData: JSON-encoded input data
     /// - Returns: A concise summary string (without the tool name), or empty string on failure
-    public func formatCallSummary(toolName: String, inputData: Data) -> String {
+    public func formatCallSummary(toolName: String, input: any ToolInput) -> String {
         guard let tool = tools[toolName] else {
             return ""
         }
-        return _formatCallSummaryWithConcreteTool(tool, inputData: inputData)
-    }
-
-    /// Helper function to format with concrete tool type
-    private func _formatCallSummaryWithConcreteTool<T: Tool>(_ tool: T, inputData: Data) -> String {
-        let decoder = JSONDecoder()
-        guard let input = try? decoder.decode(T.Input.self, from: inputData) else {
-            return ""
+        func _format<T: Tool>(_ tool: T) -> String {
+            guard let specificInput = input as? T.Input else {
+                return "(no input)"
+            }
+            return tool.formatCallSummary(input: specificInput)
         }
-        return tool.formatCallSummary(input: input)
+        return _format(tool)
     }
 
     /// Extract the file path from a tool execution if it's a FileTool
@@ -207,20 +237,16 @@ public final class Tools: Sendable {
     ///   - toolName: Name of the tool
     ///   - inputData: JSON-encoded input data
     /// - Returns: The file path if this is a FileTool, nil otherwise
-    public func extractFilePath(toolName: String, inputData: Data) -> String? {
+    public func extractFilePath(toolName: String, input: any ToolInput) -> String? {
         guard let tool = tools[toolName] as? any FileTool else {
             return nil
         }
-        return _extractFilePathWithConcreteTool(tool, inputData: inputData)
-    }
-
-    /// Helper function to extract file path with concrete tool type
-    private func _extractFilePathWithConcreteTool<T: FileTool>(_ tool: T, inputData: Data) -> String? {
-        let decoder = JSONDecoder()
-        guard let input = try? decoder.decode(T.Input.self, from: inputData) else {
-            return nil
+        func _extract<T: FileTool>(_ tool: T) -> String? {
+            guard let specificInput = input as? T.Input else {
+                return nil
+            }
+            return tool.filePath(from: specificInput)
         }
-        // Use type-erased approach to call filePath(from:)
-        return tool.filePath(from: input)
+        return _extract(tool)
     }
 }

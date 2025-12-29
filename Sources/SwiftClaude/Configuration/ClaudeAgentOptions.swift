@@ -1,5 +1,11 @@
 import Foundation
 
+// MARK: - Default Model
+
+/// The default Claude model to use.
+/// This is the alias for the latest Sonnet 4.5 model.
+public let defaultClaudeModel = "claude-sonnet-4-5"
+
 // MARK: - Claude Agent Options
 
 public struct ClaudeAgentOptions: Sendable {
@@ -19,7 +25,7 @@ public struct ClaudeAgentOptions: Sendable {
         systemPrompt: String? = nil,
         maxTurns: Int? = nil,
         apiKey: String,
-        model: String = "claude-sonnet-4-5-20250929",
+        model: String = defaultClaudeModel,
         workingDirectory: URL? = nil,
         compactionEnabled: Bool = false,
         compactionTokenThreshold: Int = 120_000,

@@ -245,21 +245,15 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
 
         // Create SubAgent tool with output callback for indented tool calls
-        let subAgentTool = SubAgentTool(
-            apiKey: options.apiKey,
-            tools: subAgentTools,
-            outputCallback: { [subAgentTools] output in
-                switch output {
-                case .toolCall(let toolName, let parameters):
-                    // Format using the tool's own formatting (convert parameters to JSON data)
-                    let jsonData = (try? JSONSerialization.data(withJSONObject: parameters)) ?? Data()
-                    let summary = subAgentTools.formatCallSummary(toolName: toolName, inputData: jsonData)
-                    print("    \(ANSIColor.gray.rawValue)\(toolName)(\(summary))\(ANSIColor.reset.rawValue)")
-                default:
-                    break  // Only show tool calls, not start/complete events
-                }
+        let subAgentTool = SubAgentTool(apiKey: options.apiKey, tools: subAgentTools) { output in
+            switch output {
+            case .toolCall(let toolName, let summary):
+                // Display tool call with summary
+                print("    \(ANSIColor.gray.rawValue)\(toolName)(\(summary))\(ANSIColor.reset.rawValue)")
+            default:
+                break  // Only show tool calls, not start/complete events
             }
-        )
+        }
 
         let tools = Tools {
             ReadTool()
@@ -288,7 +282,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         // Print tool start immediately before execution
         await client.addHook(.beforeToolExecution) { [tools, toolOutputManager] (context: BeforeToolExecutionContext) in
             // Format tool call as a concise one-liner using the tool's own formatting
-            let summary = tools.formatCallSummary(toolName: context.toolName, inputData: context.input)
+            let toolInput = RawToolInput(data: context.input)
+            let summary = tools.formatCallSummary(toolName: context.toolName, input: toolInput)
             let displayLine = "\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(summary))"
 
             // Print immediately
@@ -448,7 +443,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
                 return
             }
-            
+
             // Track file operations based on tool type
             do {
                 switch context.toolName {
@@ -457,19 +452,19 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     if let filePath = inputDict["file_path"] as? String {
                         try await fileTracker.recordRead(path: filePath)
                     }
-                    
+
                 case "Write":
                     // Validate and record write operation
                     if let filePath = inputDict["file_path"] as? String {
                         try await fileTracker.recordWrite(path: filePath, allowCreate: true)
                     }
-                    
+
                 case "Update":
                     // Validate and record update operation
                     if let filePath = inputDict["file_path"] as? String {
                         try await fileTracker.recordUpdate(path: filePath)
                     }
-                    
+
                 default:
                     break
                 }
@@ -477,8 +472,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 // Print warning about file safety violation
                 print("\n\(ANSIColor.red.rawValue)⚠️  File Safety Warning: \(error.localizedDescription)\(ANSIColor.reset.rawValue)")
                 print("\(ANSIColor.gray.rawValue)   Use --disable-file-safety to bypass these checks\(ANSIColor.reset.rawValue)")
-                // Re-throw to prevent the tool from executing
-                throw error
+            } catch {
+                // Ignore other errors
             }
         }
     }

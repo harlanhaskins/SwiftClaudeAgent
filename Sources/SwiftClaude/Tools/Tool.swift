@@ -52,8 +52,12 @@ import Foundation
 /// }
 /// ```
 public protocol Tool: Sendable {
-    /// The input type for this tool. Must be Codable and Sendable.
-    associatedtype Input: Codable & Sendable
+    /// The input type for this tool.
+    associatedtype Input: ToolInput
+
+    /// The output type for this tool.
+    /// Defaults to String for simple text outputs.
+    associatedtype Output: ToolOutput = String
 
     /// Unique identifier for this tool (static).
     ///
@@ -195,18 +199,40 @@ public func makePathRelative(_ path: String) -> String {
     return path
 }
 
+// MARK: - Tool Output
+
+/// Type constraint for tool outputs.
+/// Tool outputs must be Codable and Sendable to support structured data passing.
+public typealias ToolOutput = Sendable & Codable
+
 // MARK: - Tool Result
 
 /// Result returned from a tool execution.
 ///
 /// Contains the output content and optionally indicates if this was an error.
+/// Can also carry structured output data that gets decoded for UI display.
 public struct ToolResult: Sendable {
     public let content: String
     public let isError: Bool
 
+    /// Structured output data (encoded as JSON)
+    public let structuredOutput: Data?
+
+    private static let encoder = JSONEncoder()
+
     public init(content: String, isError: Bool = false) {
         self.content = content
         self.isError = isError
+        self.structuredOutput = nil
+    }
+
+    /// Initialize with structured output
+    public init<T: ToolOutput>(content: String, structuredOutput: T, isError: Bool = false) {
+        self.content = content
+        self.isError = isError
+
+        // Encode the structured output
+        self.structuredOutput = try? Self.encoder.encode(structuredOutput)
     }
 
     /// Create an error result
