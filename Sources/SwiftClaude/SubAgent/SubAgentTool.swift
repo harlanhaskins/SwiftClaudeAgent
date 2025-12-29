@@ -108,6 +108,7 @@ public struct SubAgentToolInput: Codable, Sendable, Equatable {
 /// Name is automatically derived: `SubAgentTool` → `"SubAgent"`
 public struct SubAgentTool: Tool {
     public typealias Input = SubAgentToolInput
+    public typealias Output = SubAgentBatchResult
 
     public let description = """
         Spawn sub-agent(s) to handle complex tasks independently. Each sub-agent runs with \
@@ -191,14 +192,14 @@ public struct SubAgentTool: Tool {
         if let outputCallback = outputCallback {
             await coordinator.onProgress { progress in
                 switch progress {
-                case .started(_, let description):
-                    outputCallback(.started(description: description))
-                case .toolCall(_, let toolName, let summary):
-                    outputCallback(.toolCall(toolName: toolName, summary: summary))
-                case .completed(_, let result):
-                    outputCallback(.completed(description: result.description, success: result.success))
-                case .failed(_, let error):
-                    outputCallback(.failed(error: error))
+                case .started(let taskId, let description):
+                    outputCallback(SubAgentOutput(taskId: taskId, event: .started(description: description)))
+                case .toolCall(let taskId, let toolName, let summary):
+                    outputCallback(SubAgentOutput(taskId: taskId, event: .toolCall(toolName: toolName, summary: summary)))
+                case .completed(let taskId, let result):
+                    outputCallback(SubAgentOutput(taskId: taskId, event: .completed(description: result.description, success: result.success)))
+                case .failed(let taskId, let error):
+                    outputCallback(SubAgentOutput(taskId: taskId, event: .failed(error: error)))
                 case .messageReceived:
                     break // Don't output for every message
                 }
@@ -226,7 +227,7 @@ public struct SubAgentTool: Tool {
 
         // Format results
         let output = formatResults(batchResult, isSingleTask: input.tasks.count == 1)
-        return ToolResult(content: output, isError: !batchResult.allSucceeded)
+        return ToolResult(content: output, structuredOutput: batchResult, isError: !batchResult.allSucceeded)
     }
 
     private func formatResults(_ batch: SubAgentBatchResult, isSingleTask: Bool) -> String {
@@ -290,9 +291,19 @@ public struct SubAgentTool: Tool {
 // MARK: - SubAgent Output
 
 /// Output events from sub-agent execution for display
-public enum SubAgentOutput: Sendable {
-    case started(description: String)
-    case toolCall(toolName: String, summary: String)
-    case completed(description: String, success: Bool)
-    case failed(error: String)
+public struct SubAgentOutput: Sendable {
+    public let taskId: String
+    public let event: Event
+
+    public enum Event: Sendable {
+        case started(description: String)
+        case toolCall(toolName: String, summary: String)
+        case completed(description: String, success: Bool)
+        case failed(error: String)
+    }
+
+    public init(taskId: String, event: Event) {
+        self.taskId = taskId
+        self.event = event
+    }
 }

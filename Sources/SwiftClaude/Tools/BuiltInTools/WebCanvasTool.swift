@@ -1,5 +1,16 @@
 import Foundation
 
+/// Output from WebCanvas tool execution
+public struct WebCanvasOutput: ToolOutput {
+    public let filePath: String
+    public let aspectRatio: String
+
+    public init(filePath: String, aspectRatio: String) {
+        self.filePath = filePath
+        self.aspectRatio = aspectRatio
+    }
+}
+
 /// Tool for creating HTML canvases with a specified aspect ratio.
 ///
 /// The WebCanvas tool allows Claude to create interactive HTML pages with JavaScript support.
@@ -17,6 +28,7 @@ import Foundation
 /// ```
 public struct WebCanvasTool: Tool {
     public typealias Input = WebCanvasToolInput
+    public typealias Output = WebCanvasOutput
 
     public let description = "Create a minimalistic HTML canvas with automatic light/dark mode support, specified aspect ratio, and JavaScript support"
 
@@ -40,6 +52,7 @@ public struct WebCanvasTool: Tool {
         let aspectRatio = parseAspectRatio(input.aspectRatio ?? "1:1")
 
         // Generate unique filename
+        // TODO: Use tool use ID when available
         let timestamp = Date().timeIntervalSince1970
         let filename = "canvas-\(Int(timestamp)).html"
         let filePath = workingDirectory.appendingPathComponent(filename)
@@ -54,7 +67,15 @@ public struct WebCanvasTool: Tool {
         // Write to file
         try htmlPage.write(to: filePath, atomically: true, encoding: .utf8)
 
-        return ToolResult(content: "Created canvas at \(filePath.path)\nAspect ratio: \(aspectRatio.width):\(aspectRatio.height)")
+        let output = WebCanvasOutput(
+            filePath: filePath.path,
+            aspectRatio: "\(Int(aspectRatio.width)):\(Int(aspectRatio.height))"
+        )
+
+        return ToolResult(
+            content: "Created canvas at \(filePath.path)\nAspect ratio: \(aspectRatio.width):\(aspectRatio.height)",
+            structuredOutput: output
+        )
     }
 
     private func parseAspectRatio(_ ratio: String) -> (width: Double, height: Double) {

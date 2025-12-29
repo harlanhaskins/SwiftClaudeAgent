@@ -177,7 +177,7 @@ public actor SubAgentCoordinator {
             let client = try await ClaudeClient(options: options, tools: tools)
 
             // Execute with optional timeout
-            let (fullOutput, turnCount, toolCallCount) = try await executeWithTimeout(
+            let (fullOutput, turnCount, toolCallCount, toolCallDetails) = try await executeWithTimeout(
                 client: client,
                 prompt: task.prompt,
                 timeout: task.timeout,
@@ -205,7 +205,8 @@ public actor SubAgentCoordinator {
                 success: true,
                 duration: duration,
                 turnCount: turnCount,
-                toolCallCount: toolCallCount
+                toolCallCount: toolCallCount,
+                toolCalls: toolCallDetails
             )
 
             // Report progress: completed
@@ -235,9 +236,9 @@ public actor SubAgentCoordinator {
         prompt: String,
         timeout: Duration?,
         taskId: String
-    ) async throws -> (output: String, turns: Int, toolCalls: Int) {
+    ) async throws -> (output: String, turns: Int, toolCalls: Int, toolCallDetails: [SubAgentToolCall]) {
         if let timeout = timeout {
-            return try await withThrowingTaskGroup(of: (String, Int, Int).self) { group in
+            return try await withThrowingTaskGroup(of: (String, Int, Int, [SubAgentToolCall]).self) { group in
                 group.addTask {
                     try await self.collectOutput(client: client, prompt: prompt, taskId: taskId)
                 }
@@ -262,10 +263,11 @@ public actor SubAgentCoordinator {
         client: ClaudeClient,
         prompt: String,
         taskId: String
-    ) async throws -> (output: String, turns: Int, toolCalls: Int) {
+    ) async throws -> (output: String, turns: Int, toolCalls: Int, toolCallDetails: [SubAgentToolCall]) {
         var output = ""
         var turnCount = 0
         var toolCallCount = 0
+        var toolCallDetails: [SubAgentToolCall] = []
 
         for await message in await client.query(prompt) {
             switch message {
@@ -277,8 +279,22 @@ public actor SubAgentCoordinator {
                         output += textBlock.text
                     case .toolUse(let toolUse):
                         toolCallCount += 1
-                        // Report tool call with summary
-                        let summary = client.formatToolCallSummary(toolName: toolUse.name, input: toolUse.input)
+
+                        // Decode input and format summary
+                        let summary: String
+                        if let decodedInput = client.decodeToolInput(toolName: toolUse.name, inputData: toolUse.input.data) {
+                            summary = client.formatToolCallSummary(toolName: toolUse.name, input: decodedInput)
+                        } else {
+                            summary = "(no input)"
+                        }
+
+                        // Store tool call details
+                        toolCallDetails.append(SubAgentToolCall(
+                            id: toolUse.id,
+                            toolName: toolUse.name,
+                            summary: summary
+                        ))
+
                         await reportProgress(.toolCall(
                             taskId: taskId,
                             toolName: toolUse.name,
@@ -304,7 +320,7 @@ public actor SubAgentCoordinator {
             }
         }
 
-        return (output, turnCount, toolCallCount)
+        return (output, turnCount, toolCallCount, toolCallDetails)
     }
 
     /// Summarize long output using Claude

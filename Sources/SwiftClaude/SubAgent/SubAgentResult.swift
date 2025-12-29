@@ -1,10 +1,23 @@
 import Foundation
 
+/// Information about a tool call made by a sub-agent
+public struct SubAgentToolCall: Sendable, Codable, Identifiable {
+    public let id: String
+    public let toolName: String
+    public let summary: String
+
+    public init(id: String, toolName: String, summary: String) {
+        self.id = id
+        self.toolName = toolName
+        self.summary = summary
+    }
+}
+
 /// The result of a sub-agent task execution.
 ///
 /// Contains both the summarized output (for quick consumption) and the full
 /// output (for detailed inspection when needed).
-public struct SubAgentResult: Sendable, Identifiable {
+public struct SubAgentResult: Sendable, Codable, Identifiable {
     /// The task ID this result corresponds to
     public let id: String
 
@@ -32,6 +45,9 @@ public struct SubAgentResult: Sendable, Identifiable {
     /// Number of tool calls made by the sub-agent
     public let toolCallCount: Int
 
+    /// Detailed list of tool calls made by the sub-agent
+    public let toolCalls: [SubAgentToolCall]
+
     public init(
         id: String,
         description: String,
@@ -41,7 +57,8 @@ public struct SubAgentResult: Sendable, Identifiable {
         error: String? = nil,
         duration: Duration,
         turnCount: Int,
-        toolCallCount: Int
+        toolCallCount: Int,
+        toolCalls: [SubAgentToolCall] = []
     ) {
         self.id = id
         self.description = description
@@ -52,6 +69,7 @@ public struct SubAgentResult: Sendable, Identifiable {
         self.duration = duration
         self.turnCount = turnCount
         self.toolCallCount = toolCallCount
+        self.toolCalls = toolCalls
     }
 
     /// Create a failed result
@@ -76,7 +94,7 @@ public struct SubAgentResult: Sendable, Identifiable {
 }
 
 /// Aggregated results from running multiple sub-agents
-public struct SubAgentBatchResult: Sendable {
+public struct SubAgentBatchResult: Sendable, Codable {
     /// Individual results for each task
     public let results: [SubAgentResult]
 
