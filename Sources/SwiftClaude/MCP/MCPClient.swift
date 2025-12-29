@@ -2,7 +2,7 @@
 import Foundation
 
 /// Client for communicating with MCP servers via stdio
-public actor MCPClient: MCPClientProtocol {
+public actor LocalMCPClient: MCPClientProtocol {
     private let config: MCPServerConfig
     private var process: Process?
     private var stdinPipe: Pipe?

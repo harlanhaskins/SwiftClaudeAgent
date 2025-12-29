@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Read Tool Input
 
-public struct ReadToolInput: Codable, Sendable, Equatable {
+public struct ReadToolInput: FileToolInput, Equatable {
     public let filePath: String
     public let offset: Int?
     public let limit: Int?
@@ -13,28 +13,22 @@ public struct ReadToolInput: Codable, Sendable, Equatable {
         self.limit = limit
     }
 
-    enum CodingKeys: String, CodingKey {
-        case filePath = "file_path"
-        case offset
-        case limit
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
-                "file_path": .string(description: "Absolute path to the file to read"),
+                "filePath": .string(description: "Absolute path to the file to read"),
                 "offset": .integer(description: "Line number to start reading from (0-indexed, optional)"),
                 "limit": .integer(description: "Maximum number of lines to read (optional)")
             ],
-            required: ["file_path"]
+            required: ["filePath"]
         )
     }
 }
 
 // MARK: - Write Tool Input
 
-public struct WriteToolInput: Codable, Sendable, Equatable {
+public struct WriteToolInput: FileToolInput, Equatable {
     public let filePath: String
     public let content: String
 
@@ -43,19 +37,14 @@ public struct WriteToolInput: Codable, Sendable, Equatable {
         self.content = content
     }
 
-    enum CodingKeys: String, CodingKey {
-        case filePath = "file_path"
-        case content
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
-                "file_path": .string(description: "Absolute path to the file to write"),
+                "filePath": .string(description: "Absolute path to the file to write"),
                 "content": .string(description: "Content to write to the file")
             ],
-            required: ["file_path", "content"]
+            required: ["filePath", "content"]
         )
     }
 }
@@ -73,15 +62,9 @@ public struct UpdateReplacement: Codable, Sendable, Equatable {
         self.endLine = endLine
         self.newContent = newContent
     }
-
-    enum CodingKeys: String, CodingKey {
-        case startLine = "start_line"
-        case endLine = "end_line"
-        case newContent = "new_content"
-    }
 }
 
-public struct UpdateToolInput: Codable, Sendable, Equatable {
+public struct UpdateToolInput: FileToolInput, Equatable {
     public let filePath: String
     public let replacements: [UpdateReplacement]
 
@@ -97,30 +80,25 @@ public struct UpdateToolInput: Codable, Sendable, Equatable {
         self.replacements = [UpdateReplacement(startLine: startLine, endLine: endLine, newContent: newContent)]
     }
 
-    enum CodingKeys: String, CodingKey {
-        case filePath = "file_path"
-        case replacements
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
-                "file_path": .string(description: "Absolute path to the file to update"),
+                "filePath": .string(description: "Absolute path to the file to update"),
                 "replacements": .array(
                     items: .object(
                         properties: [
-                            "start_line": .integer(description: "Line number (1-indexed). For replacement: first line to replace. For insertion: line to insert before."),
-                            "end_line": .integer(description: "Last line to replace (1-indexed, inclusive). OPTIONAL: Omit to insert before start_line without replacing anything."),
-                            "new_content": .string(description: "New content. For replacement: replaces lines start_line through end_line. For insertion: inserted before start_line.")
+                            "startLine": .integer(description: "Line number (1-indexed). For replacement: first line to replace. For insertion: line to insert before."),
+                            "endLine": .integer(description: "Last line to replace (1-indexed, inclusive). OPTIONAL: Omit to insert before start_line without replacing anything."),
+                            "newContent": .string(description: "New content. For replacement: replaces lines start_line through end_line. For insertion: inserted before start_line.")
                         ],
-                        required: ["start_line", "new_content"],
-                        description: "Replacement: {start_line: 5, end_line: 7, new_content: \"...\"} replaces lines 5-7. Insertion: {start_line: 5, new_content: \"...\"} inserts before line 5."
+                        required: ["startLine", "newContent"],
+                        description: "Replacement: {startLine: 5, endLine: 7, newContent: \"...\"} replaces lines 5-7. Insertion: {startLine: 5, newContent: \"...\"} inserts before line 5."
                     ),
                     description: "Array of replacements/insertions to apply. Supports both replacing line ranges and inserting new lines."
                 )
             ],
-            required: ["file_path", "replacements"]
+            required: ["filePath", "replacements"]
         )
     }
 }
@@ -204,23 +182,15 @@ public struct GrepToolInput: Codable, Sendable, Equatable {
         self.maxResults = maxResults
     }
 
-    enum CodingKeys: String, CodingKey {
-        case pattern
-        case path
-        case filePattern = "file_pattern"
-        case ignoreCase = "ignore_case"
-        case maxResults = "max_results"
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
                 "pattern": .string(description: "Regular expression pattern to search for"),
                 "path": .string(description: "File or directory to search in (default: current directory)"),
-                "file_pattern": .string(description: "Glob pattern to filter files (e.g., '*.swift')"),
-                "ignore_case": .boolean(description: "Case insensitive search (default: false)"),
-                "max_results": .integer(description: "Maximum number of results to return (default: 100)")
+                "filePattern": .string(description: "Glob pattern to filter files (e.g., '*.swift')"),
+                "ignoreCase": .boolean(description: "Case insensitive search (default: false)"),
+                "maxResults": .integer(description: "Maximum number of results to return (default: 100)")
             ],
             required: ["pattern"]
         )
@@ -240,19 +210,13 @@ public struct ListToolInput: Codable, Sendable, Equatable {
         self.showHidden = showHidden
     }
 
-    enum CodingKeys: String, CodingKey {
-        case path
-        case depth
-        case showHidden = "show_hidden"
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
                 "path": .string(description: "Directory path to list"),
                 "depth": .integer(description: "How many levels deep to list subdirectories. Default (nil) lists only the specified directory. depth=1 includes immediate subdirectories, depth=2 goes two levels deep, etc. Use carefully - large depths can list many files."),
-                "show_hidden": .boolean(description: "Show hidden files (default: false)")
+                "showHidden": .boolean(description: "Show hidden files (default: false)")
             ],
             required: ["path"]
         )
@@ -295,18 +259,12 @@ public struct WebCanvasToolInput: Codable, Sendable, Equatable {
         self.input = input
     }
 
-    enum CodingKeys: String, CodingKey {
-        case html
-        case aspectRatio = "aspect_ratio"
-        case input
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
                 "html": .string(description: "Complete HTML content to render. Can include inline CSS and JavaScript. The canvas will be displayed in a small scrollable container with a defined aspect ratio and border, so designs should be responsive. Automatically supports light/dark mode via CSS variables: --text-color, --background-color, --secondary-color. Keep designs minimalistic."),
-                "aspect_ratio": .string(description: "Aspect ratio for the canvas (e.g., \"16:9\", \"4:3\", \"1:1\"). Defaults to \"1:1\"."),
+                "aspectRatio": .string(description: "Aspect ratio for the canvas (e.g., \"16:9\", \"4:3\", \"1:1\"). Defaults to \"1:1\"."),
                 "input": .string(description: "Optional JSON string to pass as input. Will be available as the global variable 'input' in the JavaScript context.")
             ],
             required: ["html"]

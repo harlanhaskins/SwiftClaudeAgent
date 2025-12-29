@@ -68,9 +68,9 @@ public struct ErrorContext: Sendable {
 public struct BeforeToolExecutionContext: Sendable {
     public let toolName: String
     public let toolUseId: String
-    public let input: Data
+    public let input: (any ToolInput)?
 
-    public init(toolName: String, toolUseId: String, input: Data) {
+    public init(toolName: String, toolUseId: String, input: (any ToolInput)?) {
         self.toolName = toolName
         self.toolUseId = toolUseId
         self.input = input
@@ -82,11 +82,13 @@ public struct AfterToolExecutionContext: Sendable {
     public let toolName: String
     public let toolUseId: String
     public let result: ToolResult
+    public let output: (any ToolOutput)?
 
-    public init(toolName: String, toolUseId: String, result: ToolResult) {
+    public init(toolName: String, toolUseId: String, result: ToolResult, output: (any ToolOutput)? = nil) {
         self.toolName = toolName
         self.toolUseId = toolUseId
         self.result = result
+        self.output = output
     }
 }
 

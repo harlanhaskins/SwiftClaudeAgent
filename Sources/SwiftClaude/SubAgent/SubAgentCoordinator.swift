@@ -278,7 +278,7 @@ public actor SubAgentCoordinator {
                     case .toolUse(let toolUse):
                         toolCallCount += 1
                         // Report tool call with summary
-                        let summary = await client.formatToolCallSummary(toolName: toolUse.name, input: toolUse.input)
+                        let summary = client.formatToolCallSummary(toolName: toolUse.name, input: toolUse.input)
                         await reportProgress(.toolCall(
                             taskId: taskId,
                             toolName: toolUse.name,

@@ -281,9 +281,13 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Print tool start immediately before execution
         await client.addHook(.beforeToolExecution) { [tools, toolOutputManager] (context: BeforeToolExecutionContext) in
-            // Format tool call as a concise one-liner using the tool's own formatting
-            let toolInput = RawToolInput(data: context.input)
-            let summary = tools.formatCallSummary(toolName: context.toolName, input: toolInput)
+            // Format tool call using decoded input
+            let summary: String
+            if let input = context.input {
+                summary = tools.formatCallSummary(toolName: context.toolName, input: input)
+            } else {
+                summary = "(no input)"
+            }
             let displayLine = "\n\(ANSIColor.bold.rawValue)\(context.toolName)\(ANSIColor.reset.rawValue)(\(summary))"
 
             // Print immediately
@@ -439,8 +443,8 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
         // Hook before tool execution to track file operations
         await client.addHook(.beforeToolExecution) { [fileTracker] (context: BeforeToolExecutionContext) in
-            // Parse the input to extract file paths
-            guard let inputDict = try? JSONSerialization.jsonObject(with: context.input) as? [String: Any] else {
+            // Use input to extract file path from file tools
+            guard let fileInput = context.input as? FileToolInput else {
                 return
             }
 
@@ -449,21 +453,15 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 switch context.toolName {
                 case "Read":
                     // Record that a file is being read
-                    if let filePath = inputDict["file_path"] as? String {
-                        try await fileTracker.recordRead(path: filePath)
-                    }
+                    try await fileTracker.recordRead(path: fileInput.filePath)
 
                 case "Write":
                     // Validate and record write operation
-                    if let filePath = inputDict["file_path"] as? String {
-                        try await fileTracker.recordWrite(path: filePath, allowCreate: true)
-                    }
+                    try await fileTracker.recordWrite(path: fileInput.filePath, allowCreate: true)
 
                 case "Update":
                     // Validate and record update operation
-                    if let filePath = inputDict["file_path"] as? String {
-                        try await fileTracker.recordUpdate(path: filePath)
-                    }
+                    try await fileTracker.recordUpdate(path: fileInput.filePath)
 
                 default:
                     break

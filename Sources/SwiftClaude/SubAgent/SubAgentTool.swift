@@ -32,14 +32,6 @@ public struct SubAgentTaskInput: Codable, Sendable, Equatable {
         self.timeout = timeout
         self.maxTurns = maxTurns
     }
-
-    enum CodingKeys: String, CodingKey {
-        case description
-        case prompt
-        case systemPrompt = "system_prompt"
-        case timeout
-        case maxTurns = "max_turns"
-    }
 }
 
 // MARK: - SubAgent Tool Input
@@ -75,11 +67,6 @@ public struct SubAgentToolInput: Codable, Sendable, Equatable {
         self.maxConcurrency = nil
     }
 
-    enum CodingKeys: String, CodingKey {
-        case tasks
-        case maxConcurrency = "max_concurrency"
-    }
-
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
@@ -89,16 +76,16 @@ public struct SubAgentToolInput: Codable, Sendable, Equatable {
                         properties: [
                             "description": .string(description: "Short description of the task (3-5 words)"),
                             "prompt": .string(description: "The prompt/task for the sub-agent"),
-                            "system_prompt": .string(description: "Optional system prompt to specialize behavior"),
+                            "systemPrompt": .string(description: "Optional system prompt to specialize behavior"),
                             "timeout": .integer(description: "Timeout in seconds (max: 600)"),
-                            "max_turns": .integer(description: "Maximum API turns (default: 20)")
+                            "maxTurns": .integer(description: "Maximum API turns (default: 20)")
                         ],
                         required: ["description", "prompt"],
                         description: "A sub-agent task definition"
                     ),
                     description: "Array of tasks. Use 1 task for focused work, 2-5 tasks for parallel execution."
                 ),
-                "max_concurrency": .integer(description: "Max parallel sub-agents (default: all tasks run in parallel)")
+                "maxConcurrency": .integer(description: "Max parallel sub-agents (default: all tasks run in parallel)")
             ],
             required: ["tasks"]
         )

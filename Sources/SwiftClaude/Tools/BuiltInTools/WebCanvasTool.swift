@@ -15,7 +15,7 @@ import Foundation
 /// )
 /// let result = try await tool.execute(input: input)
 /// ```
-public struct WebCanvasTool: FileTool {
+public struct WebCanvasTool: Tool {
     public typealias Input = WebCanvasToolInput
 
     public let description = "Create a minimalistic HTML canvas with automatic light/dark mode support, specified aspect ratio, and JavaScript support"
@@ -28,14 +28,6 @@ public struct WebCanvasTool: FileTool {
 
     public init(workingDirectory: URL) {
         self.workingDirectory = workingDirectory
-    }
-
-    public var fileOutputLabel: String { "Canvas HTML" }
-
-    public func filePath(from input: WebCanvasToolInput) -> String {
-        // Generate filename based on content hash
-        let hash = abs(input.html.hashValue)
-        return workingDirectory.appendingPathComponent("canvas-\(hash).html").path
     }
 
     public func formatCallSummary(input: WebCanvasToolInput) -> String {

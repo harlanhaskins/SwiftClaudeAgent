@@ -6,6 +6,8 @@ import FoundationNetworking
 
 /// Actor responsible for communication with the Anthropic API
 actor AnthropicAPIClient {
+    let decoder = JSONDecoder()
+    let encoder = JSONEncoder()
 
     // MARK: - Properties
 
@@ -13,7 +15,6 @@ actor AnthropicAPIClient {
     private let baseURL = "https://api.anthropic.com/v1/messages"
     private let anthropicVersion = "2023-06-01"
     private let converter = MessageConverter()
-    private let parser = SSEParser()
     private let urlSession: URLSession
 
     // MARK: - Initialization
@@ -53,12 +54,11 @@ actor AnthropicAPIClient {
         try validateResponse(response, data: data)
 
         // Try to decode error first
-        if let errorResponse = try? JSONDecoder().decode(AnthropicErrorResponse.self, from: data) {
+        if let errorResponse = try? decoder.decode(AnthropicErrorResponse.self, from: data) {
             throw ClaudeError.apiError(errorResponse.error.message)
         }
 
         // Decode successful response
-        let decoder = JSONDecoder()
         let anthropicResponse = try decoder.decode(AnthropicResponse.self, from: data)
 
         return await converter.convertFromAnthropicResponse(anthropicResponse)
@@ -144,7 +144,6 @@ actor AnthropicAPIClient {
             tools: tools
         )
 
-        let encoder = JSONEncoder()
         request.httpBody = try encoder.encode(requestBody)
 
         return request

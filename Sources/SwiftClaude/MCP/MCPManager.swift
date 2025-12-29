@@ -27,7 +27,7 @@ public struct MCPConfiguration: Codable, Sendable {
 /// Manages multiple MCP server connections
 public actor MCPManager {
     private var clients: [String: any MCPClientProtocol] = [:]
-    private var isStarted: Bool = false
+    public private(set) var isStarted: Bool = false
 
     private let configuration: MCPConfiguration
 
@@ -38,7 +38,7 @@ public actor MCPManager {
     // MARK: - Lifecycle
 
     /// Start all configured MCP servers
-    public func start() async throws {
+    public func start() async {
         guard !isStarted else { return }
 
         for (serverName, serverConfig) in configuration.mcpServers {
@@ -48,7 +48,7 @@ public actor MCPManager {
                 client = HTTPMCPClient(config: serverConfig)
             } else {
                 #if os(macOS) || os(Linux)
-                client = MCPClient(config: serverConfig)
+                client = LocalMCPClient(config: serverConfig)
                 #else
                 print("✗ stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead for server \(serverName)")
                 continue

@@ -54,6 +54,7 @@ public final class Tools: Sendable {
     // MARK: - Properties
 
     private let tools: [String: any Tool]
+    private let decoder = JSONDecoder()
 
     // MARK: - Initialization
 
@@ -206,7 +207,7 @@ public final class Tools: Sendable {
             throw ToolError.notFound("Tool '\(toolName)' not found")
         }
         func _execute<T: Tool>(_ tool: T) async throws -> ToolResult {
-            let input = try JSONDecoder().decode(T.Input.self, from: inputData)
+            let input = try decoder.decode(T.Input.self, from: inputData)
             return try await tool.execute(input: input)
         }
         return try await _execute(tool)

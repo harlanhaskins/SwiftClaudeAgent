@@ -142,7 +142,7 @@ extension Tool {
 
 /// Protocol for tools that operate on files.
 /// Provides default implementations for input/output labels and file path extraction.
-public protocol FileTool: Tool {
+public protocol FileTool: Tool where Input: FileToolInput {
     /// The file output type (e.g., "File Contents", "Written Content")
     var fileOutputLabel: String { get }
 
@@ -155,6 +155,10 @@ public protocol FileTool: Tool {
 extension FileTool {
     public var inputLabel: String { "File Path" }
     public var outputLabel: String { fileOutputLabel }
+}
+
+public protocol FileToolInput: ToolInput {
+    var filePath: String { get }
 }
 
 // MARK: - Display Helpers
