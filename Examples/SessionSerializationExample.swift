@@ -40,7 +40,7 @@ struct SessionSerializationExample {
             print(sessionJSON)
 
             // Save to file (optional)
-            let fileURL = URL(fileURLWithPath: "session.json")
+            let fileURL = URL(filePath: "session.json")
             try sessionJSON.write(to: fileURL, atomically: true, encoding: .utf8)
             print("\nSession saved to: \(fileURL.path)")
 

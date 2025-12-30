@@ -37,7 +37,7 @@ public struct JavaScriptTool: Tool {
 
     public init() {}
 
-    public func formatCallSummary(input: JavaScriptToolInput) -> String {
+    public func formatCallSummary(input: JavaScriptToolInput, context: ToolContext) -> String {
         let preview = input.code.prefix(50)
         return preview.count < input.code.count ? "\(preview)..." : String(preview)
     }

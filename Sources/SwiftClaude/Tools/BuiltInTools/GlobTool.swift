@@ -4,6 +4,7 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+import System
 
 /// Tool for finding files by glob pattern.
 ///
@@ -32,9 +33,10 @@ public struct GlobTool: Tool {
     /// Maximum number of files to return
     private static let maxResults = OutputLimiter.defaultMaxItems
 
-    public func formatCallSummary(input: GlobToolInput) -> String {
+    public func formatCallSummary(input: GlobToolInput, context: ToolContext) -> String {
         if let path = input.path, !path.isEmpty {
-            return "\(input.pattern) in \(truncatePathForDisplay(path))"
+            let pathFilePath = FilePath(path)
+            return "\(input.pattern) in \(truncatePathForDisplay(pathFilePath, workingDirectory: context.workingDirectory))"
         }
         return input.pattern
     }
@@ -139,7 +141,7 @@ public struct GlobTool: Tool {
         var directories: [String] = []
 
         guard let enumerator = FileManager.default.enumerator(
-            at: URL(fileURLWithPath: path),
+            at: URL(filePath: path),
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
         ) else {

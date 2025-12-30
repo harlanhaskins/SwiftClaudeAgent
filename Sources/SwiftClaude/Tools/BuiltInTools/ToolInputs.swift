@@ -1,13 +1,14 @@
 import Foundation
+import System
 
 // MARK: - Read Tool Input
 
 public struct ReadToolInput: FileToolInput, Equatable {
-    public let filePath: String
+    public let filePath: FilePath
     public let offset: Int?
     public let limit: Int?
 
-    public init(filePath: String, offset: Int? = nil, limit: Int? = nil) {
+    public init(filePath: FilePath, offset: Int? = nil, limit: Int? = nil) {
         self.filePath = filePath
         self.offset = offset
         self.limit = limit
@@ -26,13 +27,36 @@ public struct ReadToolInput: FileToolInput, Equatable {
     }
 }
 
+extension ReadToolInput: Codable {
+    enum CodingKeys: String, CodingKey {
+        case filePath
+        case offset
+        case limit
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let pathString = try container.decode(String.self, forKey: .filePath)
+        self.filePath = FilePath(pathString)
+        self.offset = try container.decodeIfPresent(Int.self, forKey: .offset)
+        self.limit = try container.decodeIfPresent(Int.self, forKey: .limit)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filePath.string, forKey: .filePath)
+        try container.encodeIfPresent(offset, forKey: .offset)
+        try container.encodeIfPresent(limit, forKey: .limit)
+    }
+}
+
 // MARK: - Write Tool Input
 
 public struct WriteToolInput: FileToolInput, Equatable {
-    public let filePath: String
+    public let filePath: FilePath
     public let content: String
 
-    public init(filePath: String, content: String) {
+    public init(filePath: FilePath, content: String) {
         self.filePath = filePath
         self.content = content
     }
@@ -46,6 +70,26 @@ public struct WriteToolInput: FileToolInput, Equatable {
             ],
             required: ["filePath", "content"]
         )
+    }
+}
+
+extension WriteToolInput: Codable {
+    enum CodingKeys: String, CodingKey {
+        case filePath
+        case content
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let pathString = try container.decode(String.self, forKey: .filePath)
+        self.filePath = FilePath(pathString)
+        self.content = try container.decode(String.self, forKey: .content)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filePath.string, forKey: .filePath)
+        try container.encode(content, forKey: .content)
     }
 }
 
@@ -65,17 +109,17 @@ public struct UpdateReplacement: Codable, Sendable, Equatable {
 }
 
 public struct UpdateToolInput: FileToolInput, Equatable {
-    public let filePath: String
+    public let filePath: FilePath
     public let replacements: [UpdateReplacement]
 
     /// Initialize with replacements array
-    public init(filePath: String, replacements: [UpdateReplacement]) {
+    public init(filePath: FilePath, replacements: [UpdateReplacement]) {
         self.filePath = filePath
         self.replacements = replacements
     }
 
     /// Convenience initializer for single replacement
-    public init(filePath: String, startLine: Int, endLine: Int? = nil, newContent: String) {
+    public init(filePath: FilePath, startLine: Int, endLine: Int? = nil, newContent: String) {
         self.filePath = filePath
         self.replacements = [UpdateReplacement(startLine: startLine, endLine: endLine, newContent: newContent)]
     }
@@ -100,6 +144,26 @@ public struct UpdateToolInput: FileToolInput, Equatable {
             ],
             required: ["filePath", "replacements"]
         )
+    }
+}
+
+extension UpdateToolInput: Codable {
+    enum CodingKeys: String, CodingKey {
+        case filePath
+        case replacements
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let pathString = try container.decode(String.self, forKey: .filePath)
+        self.filePath = FilePath(pathString)
+        self.replacements = try container.decode([UpdateReplacement].self, forKey: .replacements)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filePath.string, forKey: .filePath)
+        try container.encode(replacements, forKey: .replacements)
     }
 }
 
@@ -199,12 +263,12 @@ public struct GrepToolInput: Codable, Sendable, Equatable {
 
 // MARK: - List Tool Input
 
-public struct ListToolInput: Codable, Sendable, Equatable {
-    public let path: String
+public struct ListToolInput: Sendable, Equatable {
+    public let path: FilePath
     public let depth: Int?
     public let showHidden: Bool?
 
-    public init(path: String, depth: Int? = nil, showHidden: Bool? = nil) {
+    public init(path: FilePath, depth: Int? = nil, showHidden: Bool? = nil) {
         self.path = path
         self.depth = depth
         self.showHidden = showHidden
@@ -220,6 +284,29 @@ public struct ListToolInput: Codable, Sendable, Equatable {
             ],
             required: ["path"]
         )
+    }
+}
+
+extension ListToolInput: Codable {
+    enum CodingKeys: String, CodingKey {
+        case path
+        case depth
+        case showHidden
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let pathString = try container.decode(String.self, forKey: .path)
+        self.path = FilePath(pathString)
+        self.depth = try container.decodeIfPresent(Int.self, forKey: .depth)
+        self.showHidden = try container.decodeIfPresent(Bool.self, forKey: .showHidden)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path.string, forKey: .path)
+        try container.encodeIfPresent(depth, forKey: .depth)
+        try container.encodeIfPresent(showHidden, forKey: .showHidden)
     }
 }
 

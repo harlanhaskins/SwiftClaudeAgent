@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Tool for listing directory contents.
 ///
@@ -25,16 +26,16 @@ public struct ListTool: Tool {
 
     public init() {}
 
-    public func formatCallSummary(input: ListToolInput) -> String {
-        truncatePathForDisplay(input.path)
+    public func formatCallSummary(input: ListToolInput, context: ToolContext) -> String {
+        return makePathRelative(input.path, workingDirectory: context.workingDirectory).string
     }
 
     public func execute(input: ListToolInput) async throws -> ToolResult {
-        let directoryURL = URL(fileURLWithPath: input.path)
+        let directoryURL = URL(filePath: input.path)!
 
         // Check if directory exists
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: input.path, isDirectory: &isDirectory) else {
+        guard FileManager.default.fileExists(atPath: input.path.string, isDirectory: &isDirectory) else {
             throw ToolError.notFound("Path not found: \(input.path)")
         }
 
@@ -147,7 +148,7 @@ public struct ListTool: Tool {
 
             // Recurse into subdirectories if we haven't reached max depth
             if entry.isDirectory && currentDepth < maxDepth {
-                let subdirURL = URL(fileURLWithPath: entry.path)
+                let subdirURL = URL(filePath: entry.path)
                 let (subEntries, subTotal, subHitLimit) = try listRecursive(
                     url: subdirURL,
                     showHidden: showHidden,

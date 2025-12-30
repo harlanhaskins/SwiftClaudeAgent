@@ -1,6 +1,7 @@
 import Foundation
 import SwiftClaude
 import ArgumentParser
+import System
 
 #if canImport(Glibc)
 import Glibc
@@ -146,7 +147,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
 
         // Create options (all built-in tools are registered by default in shared registry)
-        let workingDir = workingDirectory.map { URL(fileURLWithPath: $0) }
+        let workingDir = workingDirectory.map { URL(filePath: $0) }
 
         // Get current date and user info
         let currentDate = Date()
@@ -231,7 +232,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> (ClaudeClient, ToolOutputManager)? {
         // Create custom tools set without Grep and List tools
-        let workingDir = options.workingDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let workingDir = options.workingDirectory ?? URL(filePath: FileManager.default.currentDirectoryPath)
 
         // Tools available to sub-agents (core file/command tools)
         let subAgentTools = Tools {
@@ -246,7 +247,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Create SubAgent tool with output callback for indented tool calls
         let subAgentTool = SubAgentTool(apiKey: options.apiKey, tools: subAgentTools) { output in
-            switch output {
+            switch output.event {
             case .toolCall(let toolName, let summary):
                 // Display tool call with summary
                 print("    \(ANSIColor.gray.rawValue)\(toolName)(\(summary))\(ANSIColor.reset.rawValue)")
@@ -280,11 +281,12 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         let toolOutputManager = ToolOutputManager()
 
         // Print tool start immediately before execution
-        await client.addHook(.beforeToolExecution) { [tools, toolOutputManager] (context: BeforeToolExecutionContext) in
+        await client.addHook(.beforeToolExecution) { [tools, toolOutputManager, workingDir] (context: BeforeToolExecutionContext) in
             // Format tool call using decoded input
             let summary: String
             if let input = context.input {
-                summary = tools.formatCallSummary(toolName: context.toolName, input: input)
+                let toolContext = ToolContext(workingDirectory: FilePath(workingDir.path))
+                summary = tools.formatCallSummary(toolName: context.toolName, input: input, context: toolContext)
             } else {
                 summary = "(no input)"
             }
@@ -453,15 +455,15 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 switch context.toolName {
                 case "Read":
                     // Record that a file is being read
-                    try await fileTracker.recordRead(path: fileInput.filePath)
+                    try await fileTracker.recordRead(path: fileInput.filePath.string)
 
                 case "Write":
                     // Validate and record write operation
-                    try await fileTracker.recordWrite(path: fileInput.filePath, allowCreate: true)
+                    try await fileTracker.recordWrite(path: fileInput.filePath.string, allowCreate: true)
 
                 case "Update":
                     // Validate and record update operation
-                    try await fileTracker.recordUpdate(path: fileInput.filePath)
+                    try await fileTracker.recordUpdate(path: fileInput.filePath.string)
 
                 default:
                     break

@@ -30,20 +30,16 @@ public struct ReadTool: FileTool {
 
     public var fileOutputLabel: String { "File Contents" }
 
-    public func filePath(from input: ReadToolInput) -> String {
-        input.filePath
-    }
-
-    public func formatCallSummary(input: ReadToolInput) -> String {
-        truncatePathForDisplay(input.filePath)
+    public func formatCallSummary(input: ReadToolInput, context: ToolContext) -> String {
+        truncatePathForDisplay(input.filePath, workingDirectory: context.workingDirectory)
     }
 
     public func execute(input: ReadToolInput) async throws -> ToolResult {
-        let fileURL = URL(fileURLWithPath: input.filePath)
+        let fileURL = URL(filePath: input.filePath)!
 
         // Check if file exists
-        guard FileManager.default.fileExists(atPath: input.filePath) else {
-            throw ToolError.notFound("File not found: \(input.filePath)")
+        guard FileManager.default.fileExists(atPath: input.filePath.string) else {
+            throw ToolError.notFound("File not found: \(input.filePath.string)")
         }
 
         // Use streaming reader to avoid loading entire file into memory

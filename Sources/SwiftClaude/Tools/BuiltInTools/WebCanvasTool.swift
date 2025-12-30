@@ -1,13 +1,32 @@
 import Foundation
+import System
 
 /// Output from WebCanvas tool execution
 public struct WebCanvasOutput: ToolOutput {
-    public let filePath: String
+    public let filePath: FilePath
     public let aspectRatio: String
 
-    public init(filePath: String, aspectRatio: String) {
+    public init(filePath: FilePath, aspectRatio: String) {
         self.filePath = filePath
         self.aspectRatio = aspectRatio
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case filePath
+        case aspectRatio
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let pathString = try container.decode(String.self, forKey: .filePath)
+        self.filePath = FilePath(pathString)
+        self.aspectRatio = try container.decode(String.self, forKey: .aspectRatio)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filePath.string, forKey: .filePath)
+        try container.encode(aspectRatio, forKey: .aspectRatio)
     }
 }
 
@@ -18,7 +37,7 @@ public struct WebCanvasOutput: ToolOutput {
 ///
 /// # Example
 /// ```swift
-/// let tool = WebCanvasTool(workingDirectory: URL(fileURLWithPath: "/tmp"))
+/// let tool = WebCanvasTool(workingDirectory: URL(filePath: "/tmp"))
 /// let input = WebCanvasToolInput(
 ///     html: "<h1>Hello</h1><script>console.log(input.name)</script>",
 ///     aspectRatio: "16:9",
@@ -42,7 +61,7 @@ public struct WebCanvasTool: Tool {
         self.workingDirectory = workingDirectory
     }
 
-    public func formatCallSummary(input: WebCanvasToolInput) -> String {
+    public func formatCallSummary(input: WebCanvasToolInput, context: ToolContext) -> String {
         let ratio = input.aspectRatio ?? "16:9"
         return "canvas (\(ratio))"
     }
@@ -55,7 +74,8 @@ public struct WebCanvasTool: Tool {
         // TODO: Use tool use ID when available
         let timestamp = Date().timeIntervalSince1970
         let filename = "canvas-\(Int(timestamp)).html"
-        let filePath = workingDirectory.appendingPathComponent(filename)
+        let fileURL = workingDirectory.appendingPathComponent(filename)
+        let filePath = FilePath(fileURL.path)
 
         // Create the complete HTML page
         let htmlPage = createHTMLPage(
@@ -65,15 +85,15 @@ public struct WebCanvasTool: Tool {
         )
 
         // Write to file
-        try htmlPage.write(to: filePath, atomically: true, encoding: .utf8)
+        try htmlPage.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let output = WebCanvasOutput(
-            filePath: filePath.path,
+            filePath: filePath,
             aspectRatio: "\(Int(aspectRatio.width)):\(Int(aspectRatio.height))"
         )
 
         return ToolResult(
-            content: "Created canvas at \(filePath.path)\nAspect ratio: \(aspectRatio.width):\(aspectRatio.height)",
+            content: "Created canvas at \(filePath.string)\nAspect ratio: \(aspectRatio.width):\(aspectRatio.height)",
             structuredOutput: output
         )
     }

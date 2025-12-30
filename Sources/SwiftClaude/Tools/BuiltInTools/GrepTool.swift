@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Tool for searching file contents with regex patterns.
 ///
@@ -26,17 +27,18 @@ public struct GrepTool: Tool {
 
     public init() {}
 
-    public func formatCallSummary(input: GrepToolInput) -> String {
+    public func formatCallSummary(input: GrepToolInput, context: ToolContext) -> String {
         let pattern = "\"\(truncateForDisplay(input.pattern, maxLength: 30))\""
         if let path = input.path, !path.isEmpty {
-            return "\(pattern) in \(truncatePathForDisplay(path))"
+            let pathFilePath = FilePath(path)
+            return "\(pattern) in \(truncatePathForDisplay(pathFilePath, workingDirectory: context.workingDirectory))"
         }
         return pattern
     }
 
     public func execute(input: GrepToolInput) async throws -> ToolResult {
         let searchPath = input.path ?? FileManager.default.currentDirectoryPath
-        let searchURL = URL(fileURLWithPath: searchPath)
+        let searchURL = URL(filePath: searchPath)
         let maxResults = input.maxResults ?? 100
 
         // Check if search path exists

@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Tool for writing content to files.
 ///
@@ -24,29 +25,29 @@ public struct WriteTool: FileTool {
 
     public var fileOutputLabel: String { "Written Content" }
 
-    public func filePath(from input: WriteToolInput) -> String {
-        input.filePath
-    }
-
-    public func formatCallSummary(input: WriteToolInput) -> String {
-        truncatePathForDisplay(input.filePath)
+    public func formatCallSummary(input: WriteToolInput, context: ToolContext) -> String {
+        truncatePathForDisplay(input.filePath, workingDirectory: context.workingDirectory)
     }
 
     public func execute(input: WriteToolInput) async throws -> ToolResult {
-        let fileURL = URL(fileURLWithPath: input.filePath)
-        let directoryURL = fileURL.deletingLastPathComponent()
+        let directory = input.filePath.removingLastComponent()
+        let dir = URL(filePath: directory)!
 
         // Create parent directories if they don't exist
-        if !FileManager.default.fileExists(atPath: directoryURL.path) {
+        if !FileManager.default.fileExists(atPath: directory.string) {
             try FileManager.default.createDirectory(
-                at: directoryURL,
+                at: dir,
                 withIntermediateDirectories: true,
                 attributes: nil
             )
         }
 
         // Write the content
-        try input.content.write(to: fileURL, atomically: true, encoding: .utf8)
+        try input.content.write(
+            to: URL(filePath: input.filePath)!,
+            atomically: true,
+            encoding: .utf8
+        )
 
         // Generate result message
         let lineCount = input.content.components(separatedBy: .newlines).count

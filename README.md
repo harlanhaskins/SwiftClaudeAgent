@@ -1,27 +1,8 @@
 # SwiftClaude
 
-A Swift SDK for building AI agents powered by Claude, with full support for streaming, tools, and interactive conversations.
-
-## Features
-
-- ✅ **Async/Await Native** - Built on Swift's modern concurrency
-- ✅ **Streaming Support** - Real-time token streaming via AsyncStream
-- ✅ **Type-Safe** - Compile-time guarantees with proper Sendable conformance
-- ✅ **Conversation Management** - Maintain context across multiple turns
-- ✅ **Session Serialization** - Save and restore conversations as JSON
-- ✅ **Actor Isolation** - Thread-safe by design
-- ✅ **Proper Cancellation** - Full support for Task cancellation
-- ✅ **Direct API Integration** - Communicates directly with Anthropic API
-- ✅ **Environment Config** - Load API keys from .env files
-- ✅ **Tools Support** - Built-in Read, Write, Bash, Glob, Grep, and List tools with typed inputs
-- ✅ **Web Search** - Built-in web search via Claude API
-- ✅ **Hooks System** - Lifecycle hooks for logging, permissions, and observability
-- ✅ **Interactive CLI** - REPL mode with colored output and ArgumentParser
-- ✅ **Query Interruption** - Press Esc to interrupt and extend prompts mid-query
+A Swift SDK for building AI agents powered by Claude. SwiftClaude provides streaming responses, tool execution, and conversation management using Swift's native concurrency model.
 
 ## Installation
-
-### Swift Package Manager
 
 Add SwiftClaude to your `Package.swift`:
 
@@ -33,18 +14,14 @@ dependencies: [
 
 ## Quick Start
 
-### 1. Get Your API Key
-
 Get an API key from [Anthropic](https://console.anthropic.com/settings/keys).
 
-### 2. Simple Query
+### Simple Query
 
 ```swift
 import SwiftClaude
 
-let apiKey = "your-api-key-here" // Or load from your app's secure storage
-
-let options = ClaudeAgentOptions(apiKey: apiKey)
+let options = ClaudeAgentOptions(apiKey: "your-api-key")
 
 for await message in query(prompt: "What is 2 + 2?", options: options) {
     if case .assistant(let msg) = message {
@@ -55,14 +32,12 @@ for await message in query(prompt: "What is 2 + 2?", options: options) {
 }
 ```
 
-### 3. Interactive Session
+### Interactive Session
 
 ```swift
-let apiKey = "your-api-key-here"
-
 let client = ClaudeClient(options: .init(
     systemPrompt: "You are a helpful assistant",
-    apiKey: apiKey
+    apiKey: "your-api-key"
 ))
 
 // First query
@@ -70,7 +45,7 @@ for await message in client.query("Hello!") {
     print(message)
 }
 
-// Follow-up query (maintains context)
+// Follow-up query maintains context
 for await message in client.query("What did I just say?") {
     print(message)
 }
@@ -80,33 +55,17 @@ for await message in client.query("What did I just say?") {
 
 ### ClaudeAgentOptions
 
-Configure the behavior of Claude:
-
 ```swift
 let options = ClaudeAgentOptions(
-    systemPrompt: String?,        // System instructions
-    maxTurns: Int?,               // Maximum conversation turns
-    permissionMode: PermissionMode, // Tool permission mode
-    apiKey: String,               // Anthropic API key
-    model: String,                // Model to use (default: claude-sonnet-4-5)
-    workingDirectory: URL?        // Working directory for Bash tool
+    systemPrompt: String?,
+    maxTurns: Int?,
+    apiKey: String,
+    model: String,
+    workingDirectory: URL?
 )
 ```
 
-### query() Function
-
-Simple function for one-shot queries:
-
-```swift
-func query(
-    prompt: String,
-    options: ClaudeAgentOptions? = nil
-) -> AsyncStream<Message>
-```
-
 ### ClaudeClient Actor
-
-Full-featured client for interactive sessions:
 
 ```swift
 actor ClaudeClient {
@@ -116,6 +75,8 @@ actor ClaudeClient {
     func cancel()
     func clearHistory()
     func getHistory() -> [Message]
+    func exportSession() async throws -> Data
+    func importSession(from data: Data) async throws
 }
 ```
 
@@ -137,200 +98,94 @@ enum ContentBlock {
 }
 ```
 
-## Examples
-
-### Pattern Matching Messages
-
-```swift
-for await message in client.query("Hello") {
-    switch message {
-    case .assistant(let msg):
-        for block in msg.content {
-            switch block {
-            case .text(let text):
-                print("Text: \(text.text)")
-            case .toolUse(let tool):
-                print("Tool: \(tool.name)")
-            default:
-                break
-            }
-        }
-    case .user(let msg):
-        print("User: \(msg.content)")
-    default:
-        break
-    }
-}
-```
-
-### Multi-Turn Conversation
-
-```swift
-let apiKey = "your-api-key-here"
-
-let client = ClaudeClient(options: .init(apiKey: apiKey))
-
-// Turn 1
-for await _ in client.query("My name is Alice") {}
-
-// Turn 2 - Claude remembers the name
-for await message in client.query("What is my name?") {
-    // Will mention "Alice"
-}
-```
-
-### Cancellation
-
-```swift
-let client = ClaudeClient(options: options)
-
-let task = Task {
-    for await message in client.query("Long running task") {
-        print(message)
-    }
-}
-
-// Cancel after timeout
-try await Task.sleep(for: .seconds(5))
-await client.cancel()
-```
-
-### Session Serialization
+## Session Persistence
 
 Save and restore conversation history:
 
 ```swift
-let apiKey = "your-api-key-here"
 let client = ClaudeClient(options: .init(apiKey: apiKey))
 
-// Have a conversation
 for await _ in client.query("Hello!") {}
 for await _ in client.query("What is 2 + 2?") {}
 
-// Export session to JSON
-let sessionJSON = try await client.exportSessionString()
-try sessionJSON.write(to: URL(fileURLWithPath: "session.json"), atomically: true, encoding: .utf8)
+// Export session
+let sessionData = try await client.exportSession()
+try sessionData.write(to: URL(filePath: "session.json")!)
 
-// Later, restore the session
-let savedJSON = try String(contentsOf: URL(fileURLWithPath: "session.json"))
+// Restore session
+let savedData = try Data(contentsOf: URL(filePath: "session.json")!)
 let restoredClient = ClaudeClient(options: .init(apiKey: apiKey))
-try await restoredClient.importSession(from: savedJSON)
+try await restoredClient.importSession(from: savedData)
 
-// Continue the conversation where you left off
+// Continue where you left off
 for await message in restoredClient.query("What was my previous question?") {
     // Will remember asking about 2 + 2
 }
 ```
 
-### Hooks
+## Hooks
 
 Register lifecycle hooks for logging, permissions, and observability:
 
 ```swift
 let client = ClaudeClient(options: .init(apiKey: apiKey))
 
-// Log all tool executions
+// Log tool executions
 await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
-    print("🔧 Executing tool: \(context.toolName)")
+    print("Executing tool: \(context.toolName)")
 }
 
-// Implement permission checking
+// Permission checking
 await client.addHook(.beforeToolExecution) { (context: BeforeToolExecutionContext) in
-    // Deny dangerous operations
     if ["Bash", "Write"].contains(context.toolName) {
         throw ToolError.permissionDenied("Permission denied for \(context.toolName)")
     }
-
-    // Or show permission dialog to user
-    if context.toolName == "Fetch" {
-        let allowed = await requestNetworkPermission()
-        if !allowed {
-            throw ToolError.permissionDenied("Network access denied")
-        }
-    }
 }
 
-// Track API usage
+// Track responses
 await client.addHook(.afterResponse) { (context: AfterResponseContext) in
     print("Response completed. Success: \(context.success)")
-    // Log metrics, update UI, etc.
 }
 
 // Error monitoring
 await client.addHook(.onError) { (context: ErrorContext) in
     print("Error in \(context.phase): \(context.error)")
-    // Send to error tracking service
 }
 ```
 
-**Available Hooks:**
+Available hooks:
 - `beforeRequest` - Before API request is sent
-- `afterResponse` - After response completes (success or error)
-- `onError` - When an error occurs
-- `beforeToolExecution` - Before a tool runs (perfect for permission checks!)
+- `afterResponse` - After response completes
+- `beforeToolExecution` - Before a tool runs
 - `afterToolExecution` - After a tool completes
-- `onMessage` - When each message is received during streaming
 
-**Permission Checking:**
-SwiftClaude doesn't enforce permissions - apps implement their own via the `beforeToolExecution` hook. If the hook throws, the tool execution is denied and an error result is sent to Claude.
+SwiftClaude doesn't enforce permissions. Apps implement their own via the `beforeToolExecution` hook.
 
-### Web Search
+## Tools
 
-Claude's built-in web search capability is available by default when using the shared `Tools` instance:
+Built-in tools are available by default through the shared `Tools` instance:
 
-```swift
-let client = ClaudeClient(options: .init(apiKey: apiKey))
-
-// Claude can search the web automatically when needed
-for await message in client.query("What's the latest news about Swift 6?") {
-    // Claude will use web_search to find current information
-}
-```
-
-**Built-in web tool:**
-- `WebSearch` - Search the web for current information (powered by Anthropic, executed server-side)
-
-This tool is executed server-side by Anthropic, not locally. It's registered in the shared `Tools` instance by default.
-
-### File Operation Tools
-
-Built-in tools for working with the filesystem are available by default:
-
-```swift
-let client = ClaudeClient(options: .init(apiKey: apiKey))
-
-// Find files by pattern
-for await message in client.query("Find all Swift files in the project") {
-    // Claude will use Glob tool with pattern "**/*.swift"
-}
-
-// Search file contents
-for await message in client.query("Search for all TODO comments in the code") {
-    // Claude will use Grep tool with pattern "TODO"
-}
-
-// List directory contents
-for await message in client.query("What files are in the Sources directory?") {
-    // Claude will use List tool
-}
-```
-
-**Available file tools:**
+**File Operations:**
 - `Read` - Read file contents with optional line ranges
-- `Write` - Write or create files with automatic directory creation
+- `Write` - Write or create files
+- `List` - List directory contents
+
+**Search:**
+- `Glob` - Find files matching patterns (e.g., `**/*.swift`)
+- `Grep` - Search file contents with regex
+- `WebSearch` - Search the web (server-side execution)
+
+**Execution:**
 - `Bash` - Execute shell commands with timeout protection
-- `Glob` - Find files matching glob patterns (e.g., `**/*.swift`)
-- `Grep` - Search file contents with regex patterns
-- `List` - List directory contents with recursive and hidden file options
 
-All file operation tools are executed locally and are registered in the shared `Tools` instance by default.
+**HTTP:**
+- `Fetch` - Fetch content from URLs
 
-#### Restricting Available Tools
+### Restricting Tools
 
-Use the result builder API to declaratively create a tools instance with specific tools:
+Use the result builder API to select specific tools:
 
 ```swift
-// Type-safe tool selection with conditional logic
 let tools = Tools {
     ReadTool()
     ListTool()
@@ -352,15 +207,7 @@ let client = ClaudeClient(
 )
 ```
 
-Or use all default tools:
-
-```swift
-let tools = Tools {
-    Tools.defaultTools
-}
-```
-
-You can also mix defaults with custom tools:
+Or include all defaults:
 
 ```swift
 let tools = Tools {
@@ -369,109 +216,100 @@ let tools = Tools {
 }
 ```
 
-### HTTP Tools
+## Custom Tools
 
-Built-in tools for making HTTP requests are available by default:
+Implement the `Tool` protocol to create custom tools:
 
 ```swift
-let client = ClaudeClient(options: .init(apiKey: apiKey))
+public struct MyTool: Tool {
+    public typealias Input = MyToolInput
+    public typealias Output = MyToolOutput
 
-// Fetch web content
-for await message in client.query("Fetch the contents of https://example.com") {
-    // Claude will use Fetch tool to make HTTP GET request
-}
+    public let description = "Description of what this tool does"
 
-// Fetch with custom headers
-for await message in client.query("Fetch https://api.github.com/users/octocat with User-Agent header 'MyApp/1.0'") {
-    // Claude will use Fetch tool with custom headers
+    public var inputSchema: JSONSchema {
+        MyToolInput.schema
+    }
+
+    public func execute(input: MyToolInput) async throws -> ToolResult {
+        // Tool implementation
+        return ToolResult(content: "Result text")
+    }
 }
 ```
 
-**Available HTTP tools:**
-- `Fetch` - Fetch content from URLs via HTTP GET requests with optional custom headers and timeout
+## CLI
 
-The Fetch tool is executed locally and is registered in the shared `Tools` instance by default.
-
-## Running the CLI
-
-The CLI will prompt for your API key on first run and store it securely:
+The CLI prompts for your API key on first run and stores it at `~/.swift-claude/anthropic-api-key`:
 
 ```bash
-# Run the CLI - it will prompt for your API key if not found
+# Run with prompt
 swift run swift-claude "What is 2 + 2?"
 
-# Or use interactive mode
+# Interactive mode
 swift run swift-claude -i
 ```
 
-Your API key will be stored in `~/.swift-claude/anthropic-api-key` with restricted permissions (0600).
+Alternatively, set the `ANTHROPIC_API_KEY` environment variable:
 
-Alternatively, you can set the `ANTHROPIC_API_KEY` environment variable:
 ```bash
-export ANTHROPIC_API_KEY='your-api-key-here'
+export ANTHROPIC_API_KEY='your-api-key'
 swift run swift-claude "What is 2 + 2?"
 ```
 
-### Interactive Mode Features
+### Query Interruption
 
-#### Query Interruption with Esc Key
-
-While a query is running, press **Esc** to interrupt it and append more text to your prompt:
+In interactive mode, press Esc to interrupt a running query and append to your prompt:
 
 ```bash
-swift run swift-claude -i
-
 You: Write a function to sort data
 
-🤖 Claude: Here's a function to sort data:
+Claude: Here's a function to sort data:
 [Press Esc]
 
-⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):
-Current prompt: Write a function to sort data
-Append: in Swift using generics with Comparable constraint
+Query interrupted! Enter additional text to append:
+Append: in Swift using generics
 
-📝 Continuing with updated prompt: Write a function to sort data in Swift using generics with Comparable constraint
-
-🤖 Claude: [Continues with enhanced prompt...]
+Continuing with updated prompt: Write a function to sort data in Swift using generics
 ```
 
-**Use cases:**
-- Add forgotten details or constraints mid-query
-- Refine your request without retyping everything
-- Iteratively improve prompts as Claude responds
-- Press Enter alone after Esc to cancel the query
+Supported on macOS and Linux. Gracefully disabled on Windows.
 
-**Platform support:**
-- ✅ macOS and Linux: Full support
-- ⚠️ Windows: Feature disabled (graceful fallback)
+## Error Handling
 
-
-## Running Examples
-
-```bash
-# Set API key environment variable
-export ANTHROPIC_API_KEY='your-api-key-here'
-
-# Run examples
-swift run QuickStart
-swift run RealAPIExample
+```swift
+do {
+    for await message in query(prompt: "Hello", options: options) {
+        print(message)
+    }
+} catch let error as ClaudeError {
+    switch error {
+    case .apiError(let msg):
+        print("API Error: \(msg)")
+    case .maxTurnsReached:
+        print("Reached maximum turns")
+    case .invalidConfiguration:
+        print("Invalid configuration")
+    default:
+        print("Error: \(error)")
+    }
+}
 ```
+
+## Requirements
+
+- Swift 6.2+
+- macOS 13+ / iOS 16+ / Linux with Swift 6.2+
+- Anthropic API key
 
 ## Testing
 
-### Unit Tests
-
 ```bash
+# Unit tests
 swift test
-```
 
-### Integration Tests
-
-Integration tests require a valid API key:
-
-```bash
-# Set environment variable
-export ANTHROPIC_API_KEY='your-key-here'
+# Integration tests (requires API key)
+export ANTHROPIC_API_KEY='your-key'
 swift test
 ```
 
@@ -497,85 +335,9 @@ swift test
 └─────────────────────────────────┘
 ```
 
-## CLI .env File Format
-
-The CLI (not the library) supports .env files for convenience:
-
-```bash
-# Anthropic API Key (required for CLI)
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-
-**Note:** The library itself does not read .env files. When using SwiftClaude as a library in your app, you should manage API keys using your app's secure storage (Keychain on Apple platforms, environment variables for server apps, etc.).
-
-## Requirements
-
-- Swift 5.9+
-- macOS 13+ / iOS 16+ / Linux with Swift 5.9+
-- Anthropic API key ([Get one here](https://console.anthropic.com/settings/keys))
-
 ## Security
 
-⚠️ **Never commit your .env file to version control!**
-
-The `.gitignore` file already excludes `.env` files. Keep your API keys secure!
-
-## Error Handling
-
-```swift
-do {
-    for await message in query(prompt: "Hello", options: options) {
-        print(message)
-    }
-} catch let error as ClaudeError {
-    switch error {
-    case .apiError(let msg):
-        print("API Error: \(msg)")
-    case .maxTurnsReached:
-        print("Reached maximum turns")
-    case .invalidConfiguration:
-        print("Invalid configuration")
-    default:
-        print("Error: \(error)")
-    }
-}
-```
-
-## Roadmap
-
-### Phase 1: Core API ✅ COMPLETE
-- [x] Message types
-- [x] ClaudeClient actor
-- [x] query() function
-- [x] Streaming support
-- [x] Conversation management
-- [x] Proper cancellation
-- [x] .env file support
-
-### Phase 2: Tools System ✅ COMPLETE
-- [x] Tool protocol with typed inputs
-- [x] Built-in tools (Read, Write, Bash, Glob, Grep, List)
-- [x] Tool execution engine
-- [x] Permission system
-- [x] Tools for tool management
-- [x] Hooks system for lifecycle events
-- [x] Built-in tool protocol for server-side tools
-- [x] Web search integration
-
-### Phase 3: MCP Integration
-- [ ] In-process MCP servers
-- [ ] Custom tool definition
-- [ ] Tool registration
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+Never commit API keys to version control. The `.gitignore` file excludes `.env` files by default.
 
 ## License
 
@@ -585,5 +347,3 @@ MIT License - see LICENSE file for details
 
 - [Anthropic API Documentation](https://docs.anthropic.com/)
 - [Get API Key](https://console.anthropic.com/settings/keys)
-- [Swift Concurrency](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html)
-- [AsyncStream Guide](https://developer.apple.com/documentation/swift/asyncstream)

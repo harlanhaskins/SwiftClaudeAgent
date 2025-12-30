@@ -35,7 +35,7 @@ public actor LocalMCPClient: MCPClientProtocol {
 
         // Configure process
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.executableURL = URL(filePath: "/usr/bin/env")
         process.arguments = [command] + (config.args ?? [])
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe

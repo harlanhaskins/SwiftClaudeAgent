@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Main client for interactive Claude sessions.
 ///
@@ -201,19 +202,11 @@ public actor ClaudeClient {
     ///   - input: The tool input
     /// - Returns: A concise summary string (without the tool name), or empty string if tool not found
     public nonisolated func formatToolCallSummary(toolName: String, input: any ToolInput) -> String {
-        let summary = tools.formatCallSummary(toolName: toolName, input: input)
-
-        // Convert absolute paths to relative if within working directory
-        guard let workingDir = options.workingDirectory?.path,
-              summary.hasPrefix("/"),
-              summary.hasPrefix(workingDir) else {
-            return summary
-        }
-
-        // Convert to relative path
-        let relativePath = String(summary.dropFirst(workingDir.count))
-        let cleanPath = relativePath.hasPrefix("/") ? String(relativePath.dropFirst()) : relativePath
-        return cleanPath.isEmpty ? "." : cleanPath
+        // Use working directory if available, otherwise use current directory
+        let workingDirURL = options.workingDirectory ?? URL(filePath: FileManager.default.currentDirectoryPath)
+        let workingDir = FilePath(workingDirURL.path)
+        let context = ToolContext(workingDirectory: workingDir)
+        return tools.formatCallSummary(toolName: toolName, input: input, context: context)
     }
 
     /// Get metadata for a tool (e.g., MCP server name for MCP tools).
@@ -308,6 +301,30 @@ public actor ClaudeClient {
             }
 
             turnCount += 1
+
+            // Check for incomplete tool uses from previous cancelled query
+            // If the last message is an assistant message with tool uses, and there are no result messages following it,
+            // add synthetic error results for those tool uses
+            if let lastMessage = conversationHistory.last,
+               case .assistant(let assistantMsg) = lastMessage {
+                var incompleteToolUses: [ToolUseBlock] = []
+
+                for block in assistantMsg.content {
+                    if case .toolUse(let toolUse) = block {
+                        incompleteToolUses.append(toolUse)
+                    }
+                }
+
+                // Add error results for incomplete tool uses
+                for toolUse in incompleteToolUses {
+                    let errorResult = Message.result(ResultMessage(
+                        toolUseId: toolUse.id,
+                        content: [.text(TextBlock(text: "Tool execution was cancelled"))],
+                        isError: true
+                    ))
+                    conversationHistory.append(errorResult)
+                }
+            }
 
             // Add user message to history
             let userMessage = Message.user(UserMessage(content: prompt))

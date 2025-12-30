@@ -26,7 +26,7 @@ public struct FetchTool: Tool {
 
     public init() {}
 
-    public func formatCallSummary(input: FetchToolInput) -> String {
+    public func formatCallSummary(input: FetchToolInput, context: ToolContext) -> String {
         truncateForDisplay(input.url, maxLength: 60)
     }
 

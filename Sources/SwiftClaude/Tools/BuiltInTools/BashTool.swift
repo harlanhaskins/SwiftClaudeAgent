@@ -39,7 +39,7 @@ public struct BashTool: Tool {
     /// Maximum output size in bytes
     private static let maxOutputBytes = OutputLimiter.defaultMaxBytes
 
-    public func formatCallSummary(input: BashToolInput) -> String {
+    public func formatCallSummary(input: BashToolInput, context: ToolContext) -> String {
         truncateForDisplay(input.command, maxLength: 60)
     }
 
@@ -67,7 +67,7 @@ public struct BashTool: Tool {
         let errorPipe = Pipe()
 
         // Configure process
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.executableURL = URL(filePath: "/bin/bash")
         process.arguments = ["-c", command]
         process.standardOutput = outputPipe
         process.standardError = errorPipe

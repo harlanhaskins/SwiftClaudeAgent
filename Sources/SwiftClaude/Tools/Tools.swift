@@ -218,9 +218,10 @@ public final class Tools: Sendable {
     /// Format a concise summary of a tool call for display
     /// - Parameters:
     ///   - toolName: Name of the tool
-    ///   - inputData: JSON-encoded input data
+    ///   - input: The tool input
+    ///   - context: Context including working directory
     /// - Returns: A concise summary string (without the tool name), or empty string on failure
-    public func formatCallSummary(toolName: String, input: any ToolInput) -> String {
+    public func formatCallSummary(toolName: String, input: any ToolInput, context: ToolContext) -> String {
         guard let tool = tools[toolName] else {
             return ""
         }
@@ -228,26 +229,8 @@ public final class Tools: Sendable {
             guard let specificInput = input as? T.Input else {
                 return "(no input)"
             }
-            return tool.formatCallSummary(input: specificInput)
+            return tool.formatCallSummary(input: specificInput, context: context)
         }
         return _format(tool)
-    }
-
-    /// Extract the file path from a tool execution if it's a FileTool
-    /// - Parameters:
-    ///   - toolName: Name of the tool
-    ///   - inputData: JSON-encoded input data
-    /// - Returns: The file path if this is a FileTool, nil otherwise
-    public func extractFilePath(toolName: String, input: any ToolInput) -> String? {
-        guard let tool = tools[toolName] as? any FileTool else {
-            return nil
-        }
-        func _extract<T: FileTool>(_ tool: T) -> String? {
-            guard let specificInput = input as? T.Input else {
-                return nil
-            }
-            return tool.filePath(from: specificInput)
-        }
-        return _extract(tool)
     }
 }

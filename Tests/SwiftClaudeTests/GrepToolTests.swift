@@ -1,6 +1,7 @@
 import Testing
 @testable import SwiftClaude
 import Foundation
+import System
 
 /// Comprehensive tests for GrepTool and FileLineReader improvements
 @Suite("Grep Tool Tests")
@@ -27,7 +28,7 @@ struct GrepToolTests {
     func fileLineReaderSimple() async throws {
         let content = "Line 1\nLine 2\nLine 3\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var lines: [FileLineReader.Line] = []
         for try await line in FileLineReader(url: url) {
@@ -47,7 +48,7 @@ struct GrepToolTests {
     func fileLineReaderEmpty() async throws {
         let content = ""
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var count = 0
         for try await _ in FileLineReader(url: url) {
@@ -61,7 +62,7 @@ struct GrepToolTests {
     func fileLineReaderNoTrailingNewline() async throws {
         let content = "Line 1\nLine 2\nLine 3"  // No trailing \n
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var lines: [String] = []
         for try await line in FileLineReader(url: url) {
@@ -76,7 +77,7 @@ struct GrepToolTests {
     func fileLineReaderEmptyLines() async throws {
         let content = "Line 1\n\nLine 3\n\nLine 5\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var lines: [String] = []
         for try await line in FileLineReader(url: url) {
@@ -97,7 +98,7 @@ struct GrepToolTests {
         let lines = (1...1000).map { "Line \($0)" }
         let content = lines.joined(separator: "\n") + "\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         // Read only first 10 lines
         var count = 0
@@ -117,7 +118,7 @@ struct GrepToolTests {
         let lines = (1...10_000).map { "Line \($0)" }
         let content = lines.joined(separator: "\n") + "\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         // Count all lines
         var count = 0
@@ -132,7 +133,7 @@ struct GrepToolTests {
     func fileLineReaderUnicode() async throws {
         let content = "English\n中文\nРусский\nעברית\n🚀🎉\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var lines: [String] = []
         for try await line in FileLineReader(url: url) {
@@ -153,7 +154,7 @@ struct GrepToolTests {
         let longLine = String(repeating: "X", count: 100_000)
         let content = "Short\n\(longLine)\nShort\n"
         let filePath = try createTestFile(content: content)
-        let url = URL(fileURLWithPath: filePath)
+        let url = URL(filePath: filePath)
 
         var lines: [String] = []
         for try await line in FileLineReader(url: url) {
@@ -314,7 +315,7 @@ func useOldName() {
         // Then use Update to replace all lines containing oldName
         let updateTool = UpdateTool()
         let updateInput = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             replacements: [
                 UpdateReplacement(startLine: 1, endLine: 1, newContent: "let newName = \"value\""),
                 UpdateReplacement(startLine: 2, endLine: 2, newContent: "func useNewName() {"),

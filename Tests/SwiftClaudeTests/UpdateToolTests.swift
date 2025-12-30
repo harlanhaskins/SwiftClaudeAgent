@@ -1,6 +1,7 @@
 import Testing
 @testable import SwiftClaude
 import Foundation
+import System
 
 /// Comprehensive tests for UpdateTool with inclusive endLine and insert mode
 @Suite("Update Tool Tests")
@@ -30,7 +31,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 2,
             endLine: 2,  // Inclusive: just line 2
             newContent: "REPLACED"
@@ -49,7 +50,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 2,
             endLine: 4,  // Inclusive: lines 2, 3, 4
             newContent: "REPLACED"
@@ -68,7 +69,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 1,
             endLine: 1,
             newContent: "FIRST"
@@ -87,7 +88,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 3,
             endLine: 3,
             newContent: "LAST"
@@ -108,7 +109,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 1,
             endLine: nil,  // Insert mode!
             newContent: "INSERTED"
@@ -128,7 +129,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 2,
             endLine: nil,  // Insert before line 2
             newContent: "INSERTED"
@@ -147,7 +148,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 4,  // After last line
             endLine: nil,
             newContent: "APPENDED"
@@ -166,7 +167,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 2,
             endLine: nil,
             newContent: "Insert A\nInsert B\nInsert C"
@@ -185,7 +186,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 2,
             endLine: nil,
             newContent: ""
@@ -206,7 +207,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             replacements: [
                 UpdateReplacement(startLine: 1, endLine: nil, newContent: "// Header"),  // Insert
                 UpdateReplacement(startLine: 3, endLine: 3, newContent: "C_MOD"),         // Replace
@@ -228,7 +229,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             replacements: [
                 UpdateReplacement(startLine: 1, endLine: nil, newContent: "// TODO: Line 1"),
                 UpdateReplacement(startLine: 2, endLine: nil, newContent: "// TODO: Line 2"),
@@ -251,7 +252,7 @@ struct UpdateToolTests {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             startLine: 10,
             endLine: nil,
             newContent: "Should fail"
@@ -283,7 +284,7 @@ func functionC() {
 
         let tool = UpdateTool()
         let input = UpdateToolInput(
-            filePath: filePath,
+            filePath: FilePath(filePath),
             replacements: [
                 UpdateReplacement(startLine: 1, endLine: nil, newContent: "// TODO: Refactor A"),
                 UpdateReplacement(startLine: 5, endLine: nil, newContent: "// TODO: Refactor B"),

@@ -1,4 +1,17 @@
 import Foundation
+import System
+
+// MARK: - Tool Context
+
+/// Context provided to tools for formatting summaries.
+public struct ToolContext: Sendable {
+    /// Working directory for path relativity
+    public let workingDirectory: FilePath
+
+    public init(workingDirectory: FilePath) {
+        self.workingDirectory = workingDirectory
+    }
+}
 
 // MARK: - Tool Protocol
 
@@ -87,12 +100,14 @@ public protocol Tool: Sendable {
 
     /// Format a concise one-line summary of a tool call for display.
     ///
-    /// This is used to show tool calls in a compact format like `Read(/path/to/file.swift)`.
+    /// This is used to show tool calls in a compact format like `Read(path/to/file.swift)`.
     /// The default implementation returns an empty string.
     ///
-    /// - Parameter input: The decoded input parameters
+    /// - Parameters:
+    ///   - input: The decoded input parameters
+    ///   - context: Context including working directory for path relativity
     /// - Returns: A concise summary string (without the tool name)
-    func formatCallSummary(input: Input) -> String
+    func formatCallSummary(input: Input, context: ToolContext) -> String
 
     /// Label for the input section in detail views.
     /// Default is "Input"
@@ -127,7 +142,7 @@ extension Tool {
     }
 
     /// Default implementation: returns empty string
-    public func formatCallSummary(input: Input) -> String {
+    public func formatCallSummary(input: Input, context: ToolContext) -> String {
         return ""
     }
 
@@ -145,11 +160,6 @@ extension Tool {
 public protocol FileTool: Tool where Input: FileToolInput {
     /// The file output type (e.g., "File Contents", "Written Content")
     var fileOutputLabel: String { get }
-
-    /// Extract the file path from the tool input.
-    /// - Parameter input: The decoded input parameters
-    /// - Returns: The file path this tool operates on
-    func filePath(from input: Input) -> String
 }
 
 extension FileTool {
@@ -158,7 +168,7 @@ extension FileTool {
 }
 
 public protocol FileToolInput: ToolInput {
-    var filePath: String { get }
+    var filePath: FilePath { get }
 }
 
 // MARK: - Display Helpers
@@ -169,38 +179,34 @@ public func truncateForDisplay(_ str: String, maxLength: Int) -> String {
     return String(str.prefix(maxLength - 1)) + "…"
 }
 
-/// Truncate a file path, keeping the filename and some context
-public func truncatePathForDisplay(_ path: String, maxLength: Int = 50) -> String {
-    // First, try to make it relative to home directory
-    let relativePath = makePathRelative(path)
-
-    // Then truncate if still too long
-    guard relativePath.count > maxLength else { return relativePath }
-    let components = relativePath.split(separator: "/")
-    if components.count <= 3 {
-        return relativePath
+public func makePathRelative(_ path: FilePath, workingDirectory: FilePath) -> FilePath {
+    var path = path
+    if path.starts(with: workingDirectory) {
+        _ = path.removePrefix(workingDirectory)
     }
-    // Keep first component, ellipsis, and last 2 components
-    let first = components.first ?? ""
-    let last = components.suffix(2).joined(separator: "/")
-    return "\(first)/…/\(last)"
+
+    // Return path as-is if not within working directory
+    return path
 }
 
-public func makePathRelative(_ path: String) -> String {
-    // Try to make path relative to home directory
-    if let homeDir = ProcessInfo.processInfo.environment["HOME"] {
-        if path.hasPrefix(homeDir) {
-            let relativePath = String(path.dropFirst(homeDir.count))
-            if relativePath.hasPrefix("/") {
-                return "~" + relativePath
-            } else if !relativePath.isEmpty {
-                return "~/" + relativePath
-            } else {
-                return "~"
-            }
-        }
+/// Truncate a file path, keeping the filename and some context
+public func truncatePathForDisplay(_ path: FilePath, maxLength: Int = 50, workingDirectory: FilePath) -> String {
+    // First, make it relative
+    let relativePath = makePathRelative(path, workingDirectory: workingDirectory)
+    let pathString = relativePath.string
+
+    // Then truncate if still too long
+    guard pathString.count > maxLength else { return pathString }
+
+    let components = relativePath.components
+    if components.count <= 3 {
+        return pathString
     }
-    return path
+
+    // Keep first component, ellipsis, and last 2 components
+    let first = components.first?.string ?? ""
+    let last = components.suffix(2).map(\.string).joined(separator: "/")
+    return "\(first)/…/\(last)"
 }
 
 // MARK: - Tool Output

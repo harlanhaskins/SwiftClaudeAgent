@@ -69,20 +69,16 @@ public struct UpdateTool: FileTool {
 
     public var fileOutputLabel: String { "Updated Content" }
 
-    public func filePath(from input: UpdateToolInput) -> String {
-        input.filePath
-    }
-
-    public func formatCallSummary(input: UpdateToolInput) -> String {
-        truncatePathForDisplay(input.filePath)
+    public func formatCallSummary(input: UpdateToolInput, context: ToolContext) -> String {
+        truncatePathForDisplay(input.filePath, workingDirectory: context.workingDirectory)
     }
 
     public func execute(input: UpdateToolInput) async throws -> ToolResult {
-        let fileURL = URL(fileURLWithPath: input.filePath)
+        let fileURL = URL(filePath: input.filePath)!
 
         // Check if file exists
-        guard FileManager.default.fileExists(atPath: input.filePath) else {
-            throw ToolError.notFound("File not found: \(input.filePath)")
+        guard FileManager.default.fileExists(atPath: input.filePath.string) else {
+            throw ToolError.notFound("File not found: \(input.filePath.string)")
         }
 
         // Validate replacements array
