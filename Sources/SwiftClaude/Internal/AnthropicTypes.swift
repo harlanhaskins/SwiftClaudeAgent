@@ -66,6 +66,7 @@ struct AnthropicContentBlock: Codable, Sendable {
     let toolUseId: String?
     let content: ToolResultContent?
     let isError: Bool?
+    let source: ImageSource?
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -76,6 +77,61 @@ struct AnthropicContentBlock: Codable, Sendable {
         case toolUseId = "tool_use_id"
         case content
         case isError = "is_error"
+        case source
+    }
+
+    init(
+        type: String,
+        text: String? = nil,
+        id: String? = nil,
+        name: String? = nil,
+        input: [String: AnyCodable]? = nil,
+        toolUseId: String? = nil,
+        content: ToolResultContent? = nil,
+        isError: Bool? = nil,
+        source: ImageSource? = nil
+    ) {
+        self.type = type
+        self.text = text
+        self.id = id
+        self.name = name
+        self.input = input
+        self.toolUseId = toolUseId
+        self.content = content
+        self.isError = isError
+        self.source = source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        input = try container.decodeIfPresent([String: AnyCodable].self, forKey: .input)
+        toolUseId = try container.decodeIfPresent(String.self, forKey: .toolUseId)
+        content = try container.decodeIfPresent(ToolResultContent.self, forKey: .content)
+        isError = try container.decodeIfPresent(Bool.self, forKey: .isError)
+
+        // Handle source for both image and document types
+        if type == "image" || type == "document" {
+            source = try container.decodeIfPresent(ImageSource.self, forKey: .source)
+        } else {
+            source = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(input, forKey: .input)
+        try container.encodeIfPresent(toolUseId, forKey: .toolUseId)
+        try container.encodeIfPresent(content, forKey: .content)
+        try container.encodeIfPresent(isError, forKey: .isError)
+        try container.encodeIfPresent(source, forKey: .source)
     }
 }
 
@@ -119,6 +175,10 @@ enum ToolResultContent: Codable, Sendable {
         }
     }
 }
+
+// MARK: - Image/Document Source Types
+// Note: ImageSource and DocumentSource are now defined in Messages/Message.swift
+// and are public types used both internally and externally
 
 // Made public for protocol
 public struct AnthropicTool: Codable, Sendable {

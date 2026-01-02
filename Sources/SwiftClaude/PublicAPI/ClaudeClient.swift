@@ -117,9 +117,18 @@ public actor ClaudeClient {
     /// - Parameter prompt: The query text
     /// - Returns: AsyncStream of Message objects
     public func query(_ prompt: String) -> AsyncStream<Message> {
+        query(UserMessage(content: prompt))
+    }
+
+    /// Send a query with a UserMessage and stream responses.
+    /// This allows for multimodal messages with images and documents.
+    ///
+    /// - Parameter userMessage: The user message to send
+    /// - Returns: AsyncStream of Message objects
+    public func query(_ userMessage: UserMessage) -> AsyncStream<Message> {
         AsyncStream { continuation in
             let queryTask = Task {
-                await self.executeQuery(prompt, continuation: continuation)
+                await self.executeQuery(userMessage, continuation: continuation)
             }
 
             // Store task for cancellation
@@ -291,7 +300,7 @@ public actor ClaudeClient {
     }
 
     private func executeQuery(
-        _ prompt: String,
+        _ userMessage: UserMessage,
         continuation: AsyncStream<Message>.Continuation
     ) async {
         do {
@@ -327,8 +336,7 @@ public actor ClaudeClient {
             }
 
             // Add user message to history
-            let userMessage = Message.user(UserMessage(content: prompt))
-            conversationHistory.append(userMessage)
+            conversationHistory.append(.user(userMessage))
 
             // Get tool definitions
             let allTools = tools.anthropicTools()
@@ -530,7 +538,14 @@ public actor ClaudeClient {
     private func messageCharCount(_ message: Message) -> Int {
         switch message {
         case .user(let msg):
-            return msg.content.count
+            switch msg.content {
+            case .text(let text):
+                return text.count
+            case .blocks(let blocks):
+                return blocks.reduce(0) { count, block in
+                    count + blockCharCount(block)
+                }
+            }
         case .assistant(let msg):
             return msg.content.reduce(0) { count, block in
                 count + blockCharCount(block)
@@ -557,6 +572,12 @@ public actor ClaudeClient {
             return result.content.reduce(0) { count, block in
                 count + blockCharCount(block)
             }
+        case .image(let imageBlock):
+            // Estimate based on base64 data length (rough approximation)
+            return (imageBlock.source.data?.count ?? 0) / 4
+        case .document(let documentBlock):
+            // Estimate based on base64 data length (rough approximation)
+            return (documentBlock.source.data?.count ?? 0) / 4
         }
     }
 
@@ -596,7 +617,24 @@ public actor ClaudeClient {
         messages.map { message in
             switch message {
             case .user(let msg):
-                return "User: \(msg.content)"
+                switch msg.content {
+                case .text(let text):
+                    return "User: \(text)"
+                case .blocks(let blocks):
+                    let text = blocks.compactMap { block -> String? in
+                        switch block {
+                        case .text(let textBlock):
+                            return textBlock.text
+                        case .image:
+                            return "[image]"
+                        case .document:
+                            return "[document]"
+                        default:
+                            return nil
+                        }
+                    }.joined(separator: "\n")
+                    return "User: \(text)"
+                }
             case .assistant(let msg):
                 let text = msg.content.compactMap { block -> String? in
                     switch block {

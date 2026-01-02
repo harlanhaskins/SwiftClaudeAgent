@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 #if os(Linux)
 import FoundationNetworking
@@ -13,7 +14,9 @@ actor AnthropicAPIClient {
 
     private let apiKey: String
     private let baseURL = "https://api.anthropic.com/v1/messages"
+    private let filesURL = "https://api.anthropic.com/v1/files"
     private let anthropicVersion = "2023-06-01"
+    private let filesBetaVersion = "files-api-2025-04-14"
     private let converter = MessageConverter()
     private let urlSession: URLSession
 
@@ -126,9 +129,13 @@ actor AnthropicAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
+        request.setValue(filesBetaVersion, forHTTPHeaderField: "anthropic-beta")
+
+        // Resolve file attachments via Files API
+        let resolvedMessages = try await resolveFileAttachments(in: messages)
 
         // Convert messages
-        let (anthropicMessages, extractedSystemPrompt) = await converter.convertToAnthropicMessages(messages)
+        let (anthropicMessages, extractedSystemPrompt) = await converter.convertToAnthropicMessages(resolvedMessages)
 
         // Use provided system prompt or extracted one
         let finalSystemPrompt = systemPrompt ?? extractedSystemPrompt
@@ -165,5 +172,135 @@ actor AnthropicAPIClient {
 
             throw ClaudeError.apiError(errorMessage)
         }
+    }
+
+    // MARK: - Files API Integration
+
+    private struct UploadedFile: Codable {
+        let id: String
+    }
+
+    private func resolveFileAttachments(in messages: [Message]) async throws -> [Message] {
+        var cache: [String: UploadedFile] = [:]
+
+        var resolvedMessages: [Message] = []
+
+        for message in messages {
+            switch message {
+            case .user(let userMsg):
+                switch userMsg.content {
+                case .text:
+                    resolvedMessages.append(message)
+                case .blocks(let blocks):
+                    var newBlocks: [ContentBlock] = []
+                    for block in blocks {
+                        newBlocks.append(try await resolveBlock(block, cache: &cache))
+                    }
+                    resolvedMessages.append(.user(UserMessage(content: .blocks(newBlocks), role: userMsg.role)))
+                }
+
+            case .assistant(var assistantMsg):
+                var newBlocks: [ContentBlock] = []
+                for block in assistantMsg.content {
+                    newBlocks.append(try await resolveBlock(block, cache: &cache))
+                }
+                assistantMsg = AssistantMessage(content: newBlocks, model: assistantMsg.model, role: assistantMsg.role)
+                resolvedMessages.append(.assistant(assistantMsg))
+
+            default:
+                resolvedMessages.append(message)
+            }
+        }
+
+        return resolvedMessages
+    }
+
+    private func resolveBlock(_ block: ContentBlock, cache: inout [String: UploadedFile]) async throws -> ContentBlock {
+        switch block {
+        case .image(let imageBlock):
+            if let path = imageBlock.source.localPath, imageBlock.source.fileId.isEmpty {
+                let upload = try await uploadFileIfNeeded(path: path, cache: &cache)
+                let newSource = ImageSource(
+                    type: "file",
+                    data: nil,
+                    fileId: upload.id,
+                    localPath: nil
+                )
+                return .image(ImageBlock(source: newSource))
+            }
+
+            if imageBlock.source.fileId.isEmpty {
+                throw ClaudeError.apiError("File attachment missing file_id and local path")
+            }
+            return block
+
+        case .document(let documentBlock):
+            if let path = documentBlock.source.localPath, documentBlock.source.fileId.isEmpty {
+                let upload = try await uploadFileIfNeeded(path: path, cache: &cache)
+                let newSource = DocumentSource(
+                    type: "file",
+                    data: nil,
+                    fileId: upload.id,
+                    localPath: nil
+                )
+                return .document(DocumentBlock(source: newSource))
+            }
+
+            if documentBlock.source.fileId.isEmpty {
+                throw ClaudeError.apiError("File attachment missing file_id and local path")
+            }
+            return block
+
+        default:
+            return block
+        }
+    }
+
+    private func uploadFileIfNeeded(path: String, cache: inout [String: UploadedFile]) async throws -> UploadedFile {
+        if let cached = cache[path] {
+            return cached
+        }
+
+        let filePath = FilePath(path)
+        let mediaType = FileAttachmentUtilities.mimeType(for: filePath) ?? "application/octet-stream"
+        let uploaded = try await uploadFile(path: path, mediaType: mediaType)
+        cache[path] = uploaded
+        return uploaded
+    }
+
+    private func uploadFile(path: String, mediaType: String) async throws -> UploadedFile {
+        guard let components = URLComponents(string: filesURL) else {
+            throw ClaudeError.invalidConfiguration
+        }
+
+        guard let url = components.url else {
+            throw ClaudeError.invalidConfiguration
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
+        request.setValue(filesBetaVersion, forHTTPHeaderField: "anthropic-beta")
+
+        // Build multipart body with a single file part
+        let fileURL = URL(fileURLWithPath: path)
+        let filename = fileURL.lastPathComponent
+        let fileData = try Data(contentsOf: fileURL)
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mediaType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let (data, response) = try await urlSession.upload(for: request, from: body)
+        try validateResponse(response, data: data)
+
+        return try decoder.decode(UploadedFile.self, from: data)
     }
 }

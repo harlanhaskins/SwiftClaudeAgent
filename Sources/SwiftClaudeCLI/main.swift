@@ -123,6 +123,9 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Working directory for Bash tool")
     var workingDirectory: String?
 
+    @Option(name: .long, parsing: .upToNextOption, help: "Path to a file attachment to include in the initial user message (repeatable)")
+    var attachment: [String] = []
+
     @Flag(name: .long, help: "Disable file safety checks (allow writes without reads)")
     var disableFileSafety = false
 
@@ -145,6 +148,9 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         guard let apiKey = loadAPIKey() else {
             throw ValidationError("API key not found. Please run the CLI to be prompted for your API key.")
         }
+
+        // Prepare attachments (validate up front)
+        let attachmentBlocks = try prepareAttachmentBlocks()
 
         // Create options (all built-in tools are registered by default in shared registry)
         let workingDir = workingDirectory.map { URL(filePath: $0) }
@@ -224,9 +230,19 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
         // Run in appropriate mode
         if interactive {
-            await runInteractive(initialPrompt: promptString.isEmpty ? nil : promptString, options: options, mcpManager: mcpManager)
+            try await runInteractive(
+                initialPrompt: promptString.isEmpty ? nil : promptString,
+                options: options,
+                mcpManager: mcpManager,
+                attachmentBlocks: attachmentBlocks
+            )
         } else {
-            await runSingleShot(prompt: promptString, options: options, mcpManager: mcpManager)
+            try await runSingleShot(
+                prompt: promptString,
+                options: options,
+                mcpManager: mcpManager,
+                attachmentBlocks: attachmentBlocks
+            )
         }
     }
 
@@ -350,16 +366,20 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         return (client, toolOutputManager)
     }
 
-    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+    func runInteractive(initialPrompt: String?, options: ClaudeAgentOptions, mcpManager: MCPManager?, attachmentBlocks: [ContentBlock]) async throws {
         guard let (client, toolOutputManager) = await setupClient(options: options, mcpManager: mcpManager) else { return }
 
         print("\(ANSIColor.cyan.rawValue)SwiftClaude Interactive Session\(ANSIColor.reset.rawValue)")
         print("\(ANSIColor.gray.rawValue)Type 'exit' or 'quit' to end the session\(ANSIColor.reset.rawValue)\n")
 
+        var pendingAttachments = attachmentBlocks
+
         // Handle initial prompt if provided
         if let initial = initialPrompt {
             print("\(ANSIColor.green.rawValue)You:\(ANSIColor.reset.rawValue) \(initial)")
-            await streamResponse(client: client, prompt: initial, toolOutputManager: toolOutputManager)
+            let userMessage = makeUserMessage(prompt: initial, attachments: pendingAttachments)
+            pendingAttachments = []
+            await streamResponse(client: client, userMessage: userMessage, toolOutputManager: toolOutputManager)
         }
 
         // Interactive loop
@@ -384,6 +404,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                 }
 
                 let promptToSend = currentPrompt
+                let userMessage = makeUserMessage(prompt: promptToSend, attachments: pendingAttachments)
 
                 let result = await withTaskGroup(of: TaskResult.self) { group in
                     group.addTask {
@@ -404,7 +425,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     }
 
                     group.addTask {
-                        await streamResponse(client: client, prompt: promptToSend, toolOutputManager: toolOutputManager)
+                        await streamResponse(client: client, userMessage: userMessage, toolOutputManager: toolOutputManager)
                         return .completed
                     }
 
@@ -431,15 +452,51 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                         break
                     }
                 } else {
+                    pendingAttachments = []
                     break
                 }
             }
         }
     }
 
-    func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?) async {
+    func runSingleShot(prompt: String, options: ClaudeAgentOptions, mcpManager: MCPManager?, attachmentBlocks: [ContentBlock]) async throws {
         guard let (client, toolOutputManager) = await setupClient(options: options, mcpManager: mcpManager) else { return }
-        await streamResponse(client: client, prompt: prompt, toolOutputManager: toolOutputManager)
+        let userMessage = makeUserMessage(prompt: prompt, attachments: attachmentBlocks)
+        await streamResponse(client: client, userMessage: userMessage, toolOutputManager: toolOutputManager)
+    }
+
+    func prepareAttachmentBlocks() throws -> [ContentBlock] {
+        var blocks: [ContentBlock] = []
+
+        for pathString in attachment {
+            let expandedPath = (pathString as NSString).expandingTildeInPath
+            let filePath = FilePath(expandedPath)
+
+            do {
+                let block = try FileAttachmentUtilities.createContentBlock(for: filePath)
+                blocks.append(block)
+            } catch {
+                throw ValidationError("Failed to attach file '\(pathString)': \(error.localizedDescription)")
+            }
+        }
+
+        return blocks
+    }
+
+    func makeUserMessage(prompt: String, attachments: [ContentBlock]) -> UserMessage {
+        guard !attachments.isEmpty else {
+            return UserMessage(content: prompt)
+        }
+
+        var blocks: [ContentBlock] = []
+
+        if !prompt.isEmpty {
+            blocks.append(.text(TextBlock(text: prompt)))
+        }
+
+        blocks.append(contentsOf: attachments)
+
+        return UserMessage(content: .blocks(blocks))
     }
     
     func setupFileTrackingHooks(client: ClaudeClient, fileTracker: FileTracker) async {
@@ -478,13 +535,13 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 
-    func streamResponse(client: ClaudeClient, prompt: String, toolOutputManager: ToolOutputManager) async {
+    func streamResponse(client: ClaudeClient, userMessage: UserMessage, toolOutputManager: ToolOutputManager) async {
         print("\n", terminator: "")
         FileHandle.standardOutput.synchronizeFile()
 
         var hasOutput = false
 
-        for await message in await client.query(prompt) {
+        for await message in await client.query(userMessage) {
             await displayMessage(message, hasOutput: &hasOutput, toolOutputManager: toolOutputManager)
         }
 
@@ -520,6 +577,20 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
                 case .toolResult:
                     break
+
+                case .image:
+                    if !hasOutput {
+                        print()
+                        hasOutput = true
+                    }
+                    print("\n\(ANSIColor.gray.rawValue)[Image attachment]\(ANSIColor.reset.rawValue)")
+
+                case .document:
+                    if !hasOutput {
+                        print()
+                        hasOutput = true
+                    }
+                    print("\n\(ANSIColor.gray.rawValue)[Document attachment]\(ANSIColor.reset.rawValue)")
                 }
             }
 
@@ -580,4 +651,3 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
     }
 }
-

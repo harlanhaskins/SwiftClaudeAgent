@@ -49,8 +49,9 @@ final class ClaudeClientMockTests: XCTestCase {
         XCTAssertEqual(history.count, 4) // 2 user + 2 assistant messages
 
         // Verify order
-        if case .user(let msg) = history[0] {
-            XCTAssertEqual(msg.content, "Query 1")
+        if case .user(let msg) = history[0],
+           case .text(let text) = msg.content {
+            XCTAssertEqual(text, "Query 1")
         } else {
             XCTFail("Expected user message")
         }

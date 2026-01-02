@@ -71,12 +71,48 @@ public struct AssistantMessage: Sendable, Codable {
 
 // MARK: - User Message
 
+public enum UserMessageContent: Sendable, Codable {
+    case text(String)
+    case blocks([ContentBlock])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let text = try? container.decode(String.self) {
+            self = .text(text)
+        } else if let blocks = try? container.decode([ContentBlock].self) {
+            self = .blocks(blocks)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Content must be string or array of blocks"
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let text):
+            try container.encode(text)
+        case .blocks(let blocks):
+            try container.encode(blocks)
+        }
+    }
+}
+
 public struct UserMessage: Sendable, Codable {
-    public let content: String
+    public let content: UserMessageContent
     public let role: String
 
-    public init(content: String, role: String = "user") {
+    public init(content: UserMessageContent, role: String = "user") {
         self.content = content
+        self.role = role
+    }
+
+    /// Convenience initializer for text-only messages (backward compatibility)
+    public init(content: String, role: String = "user") {
+        self.content = .text(content)
         self.role = role
     }
 }
@@ -114,6 +150,8 @@ public enum ContentBlock: Sendable, Codable {
     case thinking(ThinkingBlock)
     case toolUse(ToolUseBlock)
     case toolResult(ToolResultBlock)
+    case image(ImageBlock)
+    case document(DocumentBlock)
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -137,6 +175,12 @@ public enum ContentBlock: Sendable, Codable {
         case "toolResult":
             let block = try container.decode(ToolResultBlock.self, forKey: .data)
             self = .toolResult(block)
+        case "image":
+            let block = try container.decode(ImageBlock.self, forKey: .data)
+            self = .image(block)
+        case "document":
+            let block = try container.decode(DocumentBlock.self, forKey: .data)
+            self = .document(block)
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown content block type: \(type)")
         }
@@ -157,6 +201,12 @@ public enum ContentBlock: Sendable, Codable {
             try container.encode(block, forKey: .data)
         case .toolResult(let block):
             try container.encode("toolResult", forKey: .type)
+            try container.encode(block, forKey: .data)
+        case .image(let block):
+            try container.encode("image", forKey: .type)
+            try container.encode(block, forKey: .data)
+        case .document(let block):
+            try container.encode("document", forKey: .type)
             try container.encode(block, forKey: .data)
         }
     }
@@ -226,5 +276,95 @@ public struct ToolResultBlock: Sendable, Codable {
         self.toolUseId = toolUseId
         self.content = content
         self.isError = isError
+    }
+}
+
+public struct ImageBlock: Sendable, Codable {
+    public let source: ImageSource
+
+    public init(source: ImageSource) {
+        self.source = source
+    }
+}
+
+public struct DocumentBlock: Sendable, Codable {
+    public let source: DocumentSource
+
+    public init(source: DocumentSource) {
+        self.source = source
+    }
+}
+
+public struct ImageSource: Sendable, Codable {
+    public let type: String
+    public let data: String?
+    public let fileId: String
+    public let localPath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case data
+        case fileId = "file_id"
+    }
+
+    public init(type: String = "base64", data: String? = nil, fileId: String = "", localPath: String? = nil) {
+        self.type = type
+        self.data = data
+        self.fileId = fileId
+        self.localPath = localPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        data = try container.decodeIfPresent(String.self, forKey: .data)
+        fileId = try container.decodeIfPresent(String.self, forKey: .fileId) ?? ""
+        localPath = nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(data, forKey: .data)
+        if !fileId.isEmpty {
+            try container.encode(fileId, forKey: .fileId)
+        }
+    }
+}
+
+public struct DocumentSource: Sendable, Codable {
+    public let type: String
+    public let data: String?
+    public let fileId: String
+    public let localPath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case data
+        case fileId = "file_id"
+    }
+
+    public init(type: String = "base64", data: String? = nil, fileId: String = "", localPath: String? = nil) {
+        self.type = type
+        self.data = data
+        self.fileId = fileId
+        self.localPath = localPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        data = try container.decodeIfPresent(String.self, forKey: .data)
+        fileId = try container.decodeIfPresent(String.self, forKey: .fileId) ?? ""
+        localPath = nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(data, forKey: .data)
+        if !fileId.isEmpty {
+            try container.encode(fileId, forKey: .fileId)
+        }
     }
 }

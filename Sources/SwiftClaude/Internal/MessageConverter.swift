@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Converts between SwiftClaude message types and Anthropic API types
 actor MessageConverter {
@@ -12,9 +13,17 @@ actor MessageConverter {
         for message in messages {
             switch message {
             case .user(let userMsg):
+                let content: AnthropicContent
+                switch userMsg.content {
+                case .text(let text):
+                    content = .text(text)
+                case .blocks(let blocks):
+                    let anthropicBlocks = blocks.compactMap { convertToAnthropicBlock($0) }
+                    content = .blocks(anthropicBlocks)
+                }
                 anthropicMessages.append(AnthropicMessage(
                     role: "user",
-                    content: .text(userMsg.content)
+                    content: content
                 ))
 
             case .assistant(let assistantMsg):
@@ -101,6 +110,44 @@ actor MessageConverter {
                 isError: nil
             )
 
+        case .image(let imageBlock):
+            let outgoingType = imageBlock.source.fileId.isEmpty ? imageBlock.source.type : "file"
+            let outgoingData = imageBlock.source.fileId.isEmpty ? imageBlock.source.data : nil
+            return AnthropicContentBlock(
+                type: "image",
+                text: nil,
+                id: nil,
+                name: nil,
+                input: nil,
+                toolUseId: nil,
+                content: nil,
+                isError: nil,
+                source: ImageSource(
+                    type: outgoingType,
+                    data: outgoingData,
+                    fileId: imageBlock.source.fileId
+                )
+            )
+
+        case .document(let documentBlock):
+            let outgoingType = documentBlock.source.fileId.isEmpty ? documentBlock.source.type : "file"
+            let outgoingData = documentBlock.source.fileId.isEmpty ? documentBlock.source.data : nil
+            return AnthropicContentBlock(
+                type: "document",
+                text: nil,
+                id: nil,
+                name: nil,
+                input: nil,
+                toolUseId: nil,
+                content: nil,
+                isError: nil,
+                source: ImageSource(
+                    type: outgoingType,
+                    data: outgoingData,
+                    fileId: documentBlock.source.fileId
+                )
+            )
+
         case .toolResult:
             // Tool results are handled separately in convertToAnthropicMessages
             return nil
@@ -148,6 +195,26 @@ actor MessageConverter {
                 toolUseId: toolUseId,
                 content: content,
                 isError: block.isError ?? false
+            ))
+
+        case "image":
+            guard let source = block.source else { return nil }
+            return .image(ImageBlock(
+                source: ImageSource(
+                    type: source.type,
+                    data: source.data,
+                    fileId: source.fileId
+                )
+            ))
+
+        case "document":
+            guard let source = block.source else { return nil }
+            return .document(DocumentBlock(
+                source: DocumentSource(
+                    type: source.type,
+                    data: source.data,
+                    fileId: source.fileId
+                )
             ))
 
         default:
