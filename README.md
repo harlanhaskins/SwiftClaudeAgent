@@ -8,7 +8,7 @@ Add SwiftClaude to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/yourusername/SwiftClaude.git", from: "0.1.0")
+    .package(url: "https://github.com/harlanhaskins/SwiftClaude.git", from: "0.1.0")
 ]
 ```
 
@@ -16,23 +16,8 @@ dependencies: [
 
 Get an API key from [Anthropic](https://console.anthropic.com/settings/keys).
 
-### Simple Query
-
-```swift
-import SwiftClaude
-
-let options = ClaudeAgentOptions(apiKey: "your-api-key")
-
-for await message in query(prompt: "What is 2 + 2?", options: options) {
-    if case .assistant(let msg) = message {
-        for case .text(let block) in msg.content {
-            print(block.text)
-        }
-    }
-}
-```
-
-### Interactive Session
+Conversations are performed through `ClaudeClient`, which maintains a stateful history of the
+conversation and serializes the conversation as you continually prompt.
 
 ```swift
 let client = ClaudeClient(options: .init(
@@ -51,51 +36,19 @@ for await message in client.query("What did I just say?") {
 }
 ```
 
-## API Reference
+## Options
 
-### ClaudeAgentOptions
+You can configure the agent with different models and a custom system prompt (or no system
+prompt).
 
 ```swift
 let options = ClaudeAgentOptions(
     systemPrompt: String?,
     maxTurns: Int?,
     apiKey: String,
-    model: String,
-    workingDirectory: URL?
+    workingDirectory: FilePath,
+    model: String
 )
-```
-
-### ClaudeClient Actor
-
-```swift
-actor ClaudeClient {
-    init(options: ClaudeAgentOptions = .default)
-
-    func query(_ prompt: String) -> AsyncStream<Message>
-    func cancel()
-    func clearHistory()
-    func getHistory() -> [Message]
-    func exportSession() async throws -> Data
-    func importSession(from data: Data) async throws
-}
-```
-
-### Message Types
-
-```swift
-enum Message {
-    case assistant(AssistantMessage)
-    case user(UserMessage)
-    case system(SystemMessage)
-    case result(ResultMessage)
-}
-
-enum ContentBlock {
-    case text(TextBlock)
-    case thinking(ThinkingBlock)
-    case toolUse(ToolUseBlock)
-    case toolResult(ToolResultBlock)
-}
 ```
 
 ## Session Persistence
@@ -103,7 +56,7 @@ enum ContentBlock {
 Save and restore conversation history:
 
 ```swift
-let client = ClaudeClient(options: .init(apiKey: apiKey))
+let client = ClaudeClient(options: .init(apiKey: apiKey), workingDirectory: workingDir)
 
 for await _ in client.query("Hello!") {}
 for await _ in client.query("What is 2 + 2?") {}
@@ -125,7 +78,8 @@ for await message in restoredClient.query("What was my previous question?") {
 
 ## Hooks
 
-Register lifecycle hooks for logging, permissions, and observability:
+You can hook into the different parts of the query execution using `addHook`. Each of these
+can throw, which will abort the query and cancel any tasks awaiting a current query.
 
 ```swift
 let client = ClaudeClient(options: .init(apiKey: apiKey))
@@ -279,7 +233,7 @@ Supported on macOS and Linux. Gracefully disabled on Windows.
 
 ```swift
 do {
-    for await message in query(prompt: "Hello", options: options) {
+    for await message in client.query("Hello") {
         print(message)
     }
 } catch let error as ClaudeError {
@@ -312,32 +266,6 @@ swift test
 export ANTHROPIC_API_KEY='your-key'
 swift test
 ```
-
-## Architecture
-
-```
-┌─────────────────────────────────┐
-│  Public API                      │
-│  - query()                       │
-│  - ClaudeClient                  │
-└──────────────┬──────────────────┘
-               │
-┌──────────────▼──────────────────┐
-│  Internal                        │
-│  - AnthropicAPIClient (actor)   │
-│  - MessageConverter (actor)     │
-│  - SSEParser (actor)            │
-│  - Tools (class)                │
-└──────────────┬──────────────────┘
-               │
-┌──────────────▼──────────────────┐
-│  Anthropic API (HTTPS + SSE)    │
-└─────────────────────────────────┘
-```
-
-## Security
-
-Never commit API keys to version control. The `.gitignore` file excludes `.env` files by default.
 
 ## License
 

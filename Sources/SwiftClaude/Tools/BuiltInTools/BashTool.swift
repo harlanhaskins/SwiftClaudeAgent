@@ -17,7 +17,7 @@ public struct BashTool: Tool {
 
     public let description = "Execute a bash command and return its output"
 
-    private let workingDirectory: URL?
+    private let workingDirectory: URL
     private let defaultTimeout: TimeInterval
 
     public var inputSchema: JSONSchema {
@@ -29,7 +29,7 @@ public struct BashTool: Tool {
     ///   - workingDirectory: Working directory for command execution (default: current directory)
     ///   - defaultTimeout: Default timeout in seconds (default: 120 seconds)
     public init(
-        workingDirectory: URL? = nil,
+        workingDirectory: URL,
         defaultTimeout: TimeInterval = 120
     ) {
         self.workingDirectory = workingDirectory
@@ -71,10 +71,7 @@ public struct BashTool: Tool {
         process.arguments = ["-c", command]
         process.standardOutput = outputPipe
         process.standardError = errorPipe
-
-        if let workingDirectory = workingDirectory {
-            process.currentDirectoryURL = workingDirectory
-        }
+        process.currentDirectoryURL = workingDirectory
 
         // Run with timeout using actor for thread-safe state
         return try await withCheckedThrowingContinuation { continuation in

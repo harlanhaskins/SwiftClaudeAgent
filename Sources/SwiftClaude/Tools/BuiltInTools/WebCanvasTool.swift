@@ -55,9 +55,9 @@ public struct WebCanvasTool: Tool {
         WebCanvasToolInput.schema
     }
 
-    private let workingDirectory: URL
+    private let workingDirectory: FilePath
 
-    public init(workingDirectory: URL) {
+    public init(workingDirectory: FilePath) {
         self.workingDirectory = workingDirectory
     }
 
@@ -74,8 +74,7 @@ public struct WebCanvasTool: Tool {
         // TODO: Use tool use ID when available
         let timestamp = Date().timeIntervalSince1970
         let filename = "canvas-\(Int(timestamp)).html"
-        let fileURL = workingDirectory.appendingPathComponent(filename)
-        let filePath = FilePath(fileURL.path)
+        let filePath = workingDirectory.appending(filename)
 
         // Create the complete HTML page
         let htmlPage = createHTMLPage(
@@ -85,7 +84,11 @@ public struct WebCanvasTool: Tool {
         )
 
         // Write to file
-        try htmlPage.write(to: fileURL, atomically: true, encoding: .utf8)
+        try htmlPage.write(
+            to: URL(filePath: filePath)!,
+            atomically: true,
+            encoding: .utf8
+        )
 
         let output = WebCanvasOutput(
             filePath: filePath,

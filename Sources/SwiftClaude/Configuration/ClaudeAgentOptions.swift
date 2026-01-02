@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 // MARK: - Default Model
 
@@ -13,7 +14,7 @@ public struct ClaudeAgentOptions: Sendable {
     public let maxTurns: Int?
     public let apiKey: String
     public let model: String
-    public let workingDirectory: URL?
+    public let workingDirectory: FilePath
 
     // Auto-compaction settings
     public let compactionEnabled: Bool
@@ -25,8 +26,8 @@ public struct ClaudeAgentOptions: Sendable {
         systemPrompt: String? = nil,
         maxTurns: Int? = nil,
         apiKey: String,
+        workingDirectory: FilePath,
         model: String = defaultClaudeModel,
-        workingDirectory: URL? = nil,
         compactionEnabled: Bool = false,
         compactionTokenThreshold: Int = 120_000,
         keepRecentTokens: Int = 50_000,
@@ -41,9 +42,5 @@ public struct ClaudeAgentOptions: Sendable {
         self.compactionTokenThreshold = compactionTokenThreshold
         self.keepRecentTokens = keepRecentTokens
         self.contextWindowLimit = contextWindowLimit
-    }
-
-    public static var `default`: ClaudeAgentOptions {
-        ClaudeAgentOptions(apiKey: "")
     }
 }

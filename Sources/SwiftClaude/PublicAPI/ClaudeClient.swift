@@ -46,7 +46,7 @@ public actor ClaudeClient {
 
     // MARK: - Initialization
 
-    public init(options: ClaudeAgentOptions = .default, tools: Tools, mcpManager: MCPManager? = nil) async throws {
+    public init(options: ClaudeAgentOptions, tools: Tools, mcpManager: MCPManager? = nil) async throws {
         try await self.init(
             options: options,
             apiClient: AnthropicAPIClient(apiKey: options.apiKey),
@@ -56,7 +56,7 @@ public actor ClaudeClient {
     }
 
     /// Initialize with a custom API client (useful for testing)
-    init(options: ClaudeAgentOptions = .default, apiClient: any APIClient, tools: Tools, mcpManager: MCPManager? = nil) async throws {
+    init(options: ClaudeAgentOptions, apiClient: any APIClient, tools: Tools, mcpManager: MCPManager? = nil) async throws {
         self.options = options
         self.apiClient = apiClient
         self.mcpManager = mcpManager
@@ -212,9 +212,7 @@ public actor ClaudeClient {
     /// - Returns: A concise summary string (without the tool name), or empty string if tool not found
     public nonisolated func formatToolCallSummary(toolName: String, input: any ToolInput) -> String {
         // Use working directory if available, otherwise use current directory
-        let workingDirURL = options.workingDirectory ?? URL(filePath: FileManager.default.currentDirectoryPath)
-        let workingDir = FilePath(workingDirURL.path)
-        let context = ToolContext(workingDirectory: workingDir)
+        let context = ToolContext(workingDirectory: options.workingDirectory)
         return tools.formatCallSummary(toolName: toolName, input: input, context: context)
     }
 
