@@ -1,4 +1,5 @@
 import Foundation
+import System
 
 /// Coordinates the execution of multiple sub-agent tasks in parallel.
 ///
@@ -28,6 +29,7 @@ public actor SubAgentCoordinator {
     private let defaultTools: Tools
     private let defaultModel: String
     private let summaryModel: String
+    private let workingDirectory: FilePath
 
     /// Progress callback for monitoring sub-agent execution
     public typealias ProgressCallback = @Sendable (SubAgentProgress) -> Void
@@ -39,15 +41,18 @@ public actor SubAgentCoordinator {
     /// - Parameters:
     ///   - apiKey: Anthropic API key
     ///   - defaultTools: Default tools available to sub-agents (can be overridden per task)
+    ///   - workingDirectory: Working directory for sub-agents
     ///   - defaultModel: Model to use for sub-agents
     ///   - summaryModel: Model to use for summarization (can use a smaller/faster model)
     public init(
         apiKey: String,
         defaultTools: Tools,
+        workingDirectory: FilePath = FilePath(FileManager.default.currentDirectoryPath),
         defaultModel: String = defaultClaudeModel,
         summaryModel: String = defaultClaudeModel
     ) {
         self.apiKey = apiKey
+        self.workingDirectory = workingDirectory
         self.defaultTools = defaultTools
         self.defaultModel = defaultModel
         self.summaryModel = summaryModel
@@ -170,6 +175,7 @@ public actor SubAgentCoordinator {
                 systemPrompt: task.systemPrompt,
                 maxTurns: task.maxTurns,
                 apiKey: apiKey,
+                workingDirectory: workingDirectory,
                 model: defaultModel
             )
 
@@ -345,6 +351,7 @@ public actor SubAgentCoordinator {
             systemPrompt: "You are a concise summarizer. Provide brief, actionable summaries.",
             maxTurns: 1,
             apiKey: apiKey,
+            workingDirectory: workingDirectory,
             model: summaryModel
         )
 

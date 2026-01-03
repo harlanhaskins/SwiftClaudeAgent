@@ -153,7 +153,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         let attachmentBlocks = try prepareAttachmentBlocks()
 
         // Create options (all built-in tools are registered by default in shared registry)
-        let workingDir = workingDirectory.map { URL(filePath: $0) }
+        let workingDir = workingDirectory.map { FilePath($0) } ?? FilePath(FileManager.default.currentDirectoryPath)
 
         // Get current date and user info
         let currentDate = Date()
@@ -177,7 +177,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
             - Current date: \(dateString)
             - User: \(userName)
             - You are executing on the user's local machine
-            - You have access to the current working directory: \(workingDir?.path ?? FileManager.default.currentDirectoryPath)
+            - You have access to the current working directory: \(workingDir.string)
             - File operations will directly modify files on the user's system
             - Be careful and precise with file modifications
 
@@ -248,7 +248,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     func setupClient(options: ClaudeAgentOptions, mcpManager: MCPManager?) async -> (ClaudeClient, ToolOutputManager)? {
         // Create custom tools set without Grep and List tools
-        let workingDir = options.workingDirectory ?? URL(filePath: FileManager.default.currentDirectoryPath)
+        let workingDir = URL(filePath: options.workingDirectory.string)
 
         // Tools available to sub-agents (core file/command tools)
         let subAgentTools = Tools {
