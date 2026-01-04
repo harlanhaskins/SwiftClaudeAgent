@@ -4,6 +4,19 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// Output from a Fetch tool execution
+public struct FetchToolOutput: ToolOutput {
+    public let statusCode: Int
+    public let size: Int
+    public let content: String
+
+    public init(statusCode: Int, size: Int, content: String) {
+        self.statusCode = statusCode
+        self.size = size
+        self.content = content
+    }
+}
+
 /// Tool for fetching web content via HTTP GET requests.
 ///
 /// The Fetch tool allows Claude to make HTTP GET requests to fetch web content.
@@ -17,6 +30,7 @@ import FoundationNetworking
 /// ```
 public struct FetchTool: Tool {
     public typealias Input = FetchToolInput
+    public typealias Output = FetchToolOutput
 
     public let description = "Fetch content from a URL via HTTP GET request"
 
@@ -84,14 +98,21 @@ public struct FetchTool: Tool {
             throw ToolError.executionFailed("Failed to decode response as UTF-8")
         }
 
-        // Format output with truncation if needed
+        // Truncate if needed
+        let truncated = OutputLimiter.truncateText(content, maxBytes: OutputLimiter.defaultMaxBytes, context: "response body")
+
+        // Create structured output
+        let structuredOutput = FetchToolOutput(
+            statusCode: statusCode,
+            size: data.count,
+            content: truncated.content
+        )
+
+        // Format display string
         let sizeStr = formatByteCount(data.count)
-        var output = "HTTP \(statusCode), \(sizeStr)\n"
+        let displayContent = "HTTP \(statusCode), \(sizeStr)\n\(truncated.content)"
 
-        let result = OutputLimiter.truncateText(content, maxBytes: OutputLimiter.defaultMaxBytes, context: "response body")
-        output += result.content
-
-        return ToolResult(content: output)
+        return ToolResult(content: displayContent, structuredOutput: structuredOutput)
     }
 
     private func formatByteCount(_ bytes: Int) -> String {

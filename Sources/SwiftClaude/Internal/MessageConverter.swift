@@ -104,7 +104,7 @@ actor MessageConverter {
                 text: nil,
                 id: toolUseBlock.id,
                 name: toolUseBlock.name,
-                input: inputDict.mapValues { AnyCodable($0 as! any Sendable) },
+                input: inputDict.mapValues { AnyCodable($0) },
                 toolUseId: nil,
                 content: nil,
                 isError: nil
@@ -179,8 +179,12 @@ actor MessageConverter {
                   let name = block.name,
                   let input = block.input else { return nil }
 
-            let inputDict = input.mapValues { $0.value as Any }
-            return .toolUse(ToolUseBlock(id: id, name: name, input: inputDict))
+            // Convert AnyCodable dictionary to JSON Data for RawToolInput
+            let inputDict = input.mapValues { $0.value }
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: inputDict) else {
+                return nil
+            }
+            return .toolUse(ToolUseBlock(id: id, name: name, input: RawToolInput(data: jsonData)))
 
         case "tool_result":
             guard let toolUseId = block.toolUseId else { return nil }

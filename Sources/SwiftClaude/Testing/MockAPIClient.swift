@@ -92,7 +92,7 @@ public actor MockAPIClient: APIClient {
                     }
 
                     // Clear responses after streaming
-                    await self.clearResponses()
+                    clearResponses()
 
                     continuation.finish()
                 } catch {

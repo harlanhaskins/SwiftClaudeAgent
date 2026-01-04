@@ -1,4 +1,5 @@
 import XCTest
+import System
 @testable import SwiftClaude
 
 final class ClaudeClientMockTests: XCTestCase {
@@ -12,7 +13,7 @@ final class ClaudeClientMockTests: XCTestCase {
         let mock = MockAPIClient()
         await mock.addTextResponse("Hello from Claude!")
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         var receivedMessage = false
@@ -34,7 +35,7 @@ final class ClaudeClientMockTests: XCTestCase {
         await mock.addTextResponse("Response 1")
         await mock.addTextResponse("Response 2")
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         // First query
@@ -72,7 +73,8 @@ final class ClaudeClientMockTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             maxTurns: 2,
-            apiKey: "test-key"
+            apiKey: "test-key",
+            workingDirectory: FilePath("/tmp")
         )
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
@@ -93,7 +95,7 @@ final class ClaudeClientMockTests: XCTestCase {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response")
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         // Make a query
@@ -117,7 +119,8 @@ final class ClaudeClientMockTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             systemPrompt: "You are a test assistant",
-            apiKey: "test-key"
+            apiKey: "test-key",
+            workingDirectory: FilePath("/tmp")
         )
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
@@ -146,7 +149,7 @@ final class ClaudeClientMockTests: XCTestCase {
             await mock.addTextResponse("Response \(i)")
         }
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         // Run multiple queries concurrently
@@ -173,7 +176,7 @@ final class ClaudeClientMockTests: XCTestCase {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response", delay: .seconds(1))
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         let task = Task {
@@ -194,7 +197,7 @@ final class ClaudeClientMockTests: XCTestCase {
         let mock = MockAPIClient()
         await mock.setErrorMode(shouldThrow: true, error: MockError.simulatedError)
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         var receivedMessage = false
@@ -214,7 +217,7 @@ final class ClaudeClientMockTests: XCTestCase {
             await mock.addTextResponse("Part \(i)", delay: .milliseconds(10))
         }
 
-        let options = ClaudeAgentOptions(apiKey: "test-key")
+        let options = ClaudeAgentOptions(apiKey: "test-key", workingDirectory: FilePath("/tmp"))
         let client = try await ClaudeClient(options: options, apiClient: mock, tools: emptyTools)
 
         var parts: [String] = []

@@ -20,6 +20,9 @@ actor AnthropicAPIClient {
     private let converter = MessageConverter()
     private let urlSession: URLSession
 
+    // Protocol to allow firing hooks without circular dependency
+    private weak var hookFirer: (any HookFiring)?
+
     // MARK: - Initialization
 
     init(apiKey: String) {
@@ -29,6 +32,16 @@ actor AnthropicAPIClient {
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
         self.urlSession = URLSession(configuration: config)
+    }
+
+    /// Set the hook firer
+    func setHookFirer(_ firer: any HookFiring) {
+        self.hookFirer = firer
+    }
+
+    /// Fire hooks via the hook firer
+    private func fireHooks<T: Sendable>(_ type: HookType, context: T) async {
+        await hookFirer?.fireHooks(type, context: context)
     }
 
     // MARK: - Non-Streaming API
@@ -290,6 +303,16 @@ actor AnthropicAPIClient {
         let filename = fileURL.lastPathComponent
         let fileData = try Data(contentsOf: fileURL)
 
+        // Create file info for hooks
+        let fileInfo = FileUploadInfo(
+            filePath: path,
+            mediaType: mediaType,
+            fileSize: Int64(fileData.count)
+        )
+
+        // Fire beforeFileUpload hook
+        await fireHooks(.beforeFileUpload, context: BeforeFileUploadContext(fileInfo: fileInfo))
+
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
@@ -298,9 +321,27 @@ actor AnthropicAPIClient {
         body.append("\r\n".data(using: .utf8)!)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        let (data, response) = try await urlSession.upload(for: request, from: body)
-        try validateResponse(response, data: data)
+        do {
+            let (data, response) = try await urlSession.upload(for: request, from: body)
+            try validateResponse(response, data: data)
 
-        return try decoder.decode(UploadedFile.self, from: data)
+            let uploadedFile = try decoder.decode(UploadedFile.self, from: data)
+
+            // Fire afterFileUpload hook (success)
+            await fireHooks(.afterFileUpload, context: AfterFileUploadContext(
+                fileInfo: fileInfo,
+                result: .success(uploadedFile.id)
+            ))
+
+            return uploadedFile
+        } catch {
+            // Fire afterFileUpload hook (failure)
+            await fireHooks(.afterFileUpload, context: AfterFileUploadContext(
+                fileInfo: fileInfo,
+                result: .failure(error)
+            ))
+
+            throw error
+        }
     }
 }

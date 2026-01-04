@@ -1,5 +1,6 @@
 import Foundation
 import System
+import os.log
 
 /// Main client for interactive Claude sessions.
 ///
@@ -22,8 +23,10 @@ import System
 ///     print(message)
 /// }
 /// ```
-public actor ClaudeClient {
+public actor ClaudeClient: HookFiring {
     // MARK: - Properties
+
+    private static let logger = Logger(subsystem: "com.anthropic.SwiftClaude", category: "ClaudeClient")
 
     private let options: ClaudeAgentOptions
     private var conversationHistory: [Message] = []
@@ -85,6 +88,11 @@ public actor ClaudeClient {
 
         // Configure SubAgentTools to inherit parent tools (excluding themselves)
         self.tools = Self.configureSubAgentTools(combinedTools)
+
+        // Set up hook firing for the API client if it's an AnthropicAPIClient
+        if let anthropicClient = apiClient as? AnthropicAPIClient {
+            await anthropicClient.setHookFirer(self)
+        }
     }
 
     /// Configure SubAgentTools to inherit parent tools
@@ -290,7 +298,7 @@ public actor ClaudeClient {
     // MARK: - Private Implementation
 
     /// Fire hooks for a specific type with the given context
-    private func fireHooks<T: Sendable>(_ type: HookType, context: T) async {
+    func fireHooks<T: Sendable>(_ type: HookType, context: T) async {
         guard let handlers = hooks[type] else { return }
         for handler in handlers {
             await handler.handle(context)
@@ -413,11 +421,22 @@ public actor ClaudeClient {
                         let result = await executeToolUse(toolUse)
 
                         // Create result message
-                        let resultMessage = Message.result(ResultMessage(
-                            toolUseId: toolUse.id,
-                            content: [.text(TextBlock(text: result.content))],
-                            isError: result.isError
-                        ))
+                        // If tool has structured output, send JSON to Claude; otherwise send formatted content
+                        let contentText: String
+                        if let structuredData = result.structuredOutput,
+                           let jsonString = String(data: structuredData, encoding: .utf8) {
+                            contentText = jsonString
+                        } else {
+                            contentText = result.content
+                        }
+
+                        let resultMessage = Message.result(
+                            ResultMessage(
+                                toolUseId: toolUse.id,
+                                content: [.text(TextBlock(text: contentText))],
+                                isError: result.isError
+                            )
+                        )
 
                         // Add to history
                         conversationHistory.append(resultMessage)
@@ -459,7 +478,7 @@ public actor ClaudeClient {
                 error: error
             ))
 
-            print("Query execution error: \(error)")
+            Self.logger.error("Query execution error: \(error, privacy: .public)")
             continuation.finish()
         }
     }
@@ -505,6 +524,8 @@ public actor ClaudeClient {
             ))
 
             let errorResult = ToolResult.error("Tool execution failed: \(error.localizedDescription)")
+
+            Self.logger.error("Tool execution failed: \(error, privacy: .public)")
 
             // Fire afterToolExecution hook with error result
             await fireHooks(.afterToolExecution, context: AfterToolExecutionContext(
@@ -739,7 +760,9 @@ public actor ClaudeClient {
         // Rebuild history: [summary] + [preserved tool messages] + [recent full messages]
         conversationHistory = [summary] + toolMessages + recentMessages
 
-        print("🗜️  Compacted history: \(messageCount) → \(conversationHistory.count) messages (~\(estimatedTokenCount) → ~\(estimateTokens(conversationHistory)) tokens)")
+        let newMessageCount = conversationHistory.count
+        let newTokenCount = estimateTokens(conversationHistory)
+        Self.logger.info("Compacted history: \(messageCount) → \(newMessageCount) messages (~\(estimatedTokenCount) → ~\(newTokenCount) tokens)")
     }
 }
 

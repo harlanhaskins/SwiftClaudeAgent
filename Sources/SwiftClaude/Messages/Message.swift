@@ -262,8 +262,8 @@ public struct RawToolInput: Sendable, Codable {
         self.data = data
     }
 
-    public func toDictionary() -> [String: Any] {
-        (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    public func toDictionary() -> [String: any ToolInput] {
+        (try? JSONSerialization.jsonObject(with: data) as? [String: any ToolInput]) ?? [:]
     }
 }
 

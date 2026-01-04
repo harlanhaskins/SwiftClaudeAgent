@@ -312,26 +312,25 @@ extension ListToolInput: Codable {
 
 // MARK: - JavaScript Tool Input
 
+#if canImport(JavaScriptCore)
 public struct JavaScriptToolInput: Codable, Sendable, Equatable {
     public let code: String
-    public let input: String?
 
-    public init(code: String, input: String? = nil) {
+    public init(code: String) {
         self.code = code
-        self.input = input
     }
 
     /// JSON Schema for this input type
     public static var schema: JSONSchema {
         .object(
             properties: [
-                "code": .string(description: "JavaScript code to execute. Can be a single expression or multiple statements. The value of the last expression will be JSON-serialized and returned."),
-                "input": .string(description: "Optional JSON string to pass as input to the script. Will be available as the global variable 'input' in the JavaScript context.")
+                "code": .string(description: "JavaScript code to execute. Can be a single expression or multiple statements. The value of the last expression will be JSON-serialized and returned.")
             ],
             required: ["code"]
         )
     }
 }
+#endif
 
 // MARK: - WebCanvas Tool Input
 

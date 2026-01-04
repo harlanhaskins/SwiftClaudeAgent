@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Configuration for multiple MCP servers
 public struct MCPConfiguration: Codable, Sendable {
@@ -26,6 +27,8 @@ public struct MCPConfiguration: Codable, Sendable {
 
 /// Manages multiple MCP server connections
 public actor MCPManager {
+    private static let logger = Logger(subsystem: "com.anthropic.SwiftClaude", category: "MCPManager")
+
     private var clients: [String: any MCPClientProtocol] = [:]
     public private(set) var isStarted: Bool = false
 
@@ -50,7 +53,7 @@ public actor MCPManager {
                 #if os(macOS) || os(Linux)
                 client = LocalMCPClient(config: serverConfig)
                 #else
-                print("✗ stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead for server \(serverName)")
+                Self.logger.error("stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead for server \(serverName)")
                 continue
                 #endif
             }
@@ -59,7 +62,7 @@ public actor MCPManager {
                 try await client.start()
                 clients[serverName] = client
             } catch {
-                print("✗ Failed to start MCP server \(serverName): \(error)")
+                Self.logger.error("Failed to start MCP server \(serverName): \(error, privacy: .public)")
                 // Continue with other servers even if one fails
             }
         }
@@ -95,7 +98,7 @@ public actor MCPManager {
                     allTools.append(tool)
                 }
             } catch {
-                print("✗ Failed to list tools from \(serverName): \(error.localizedDescription)")
+                Self.logger.error("Failed to list tools from \(serverName): \(error, privacy: .public)")
                 // Continue with other servers even if one fails
             }
         }

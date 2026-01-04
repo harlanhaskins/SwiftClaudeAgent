@@ -21,6 +21,12 @@ public enum HookType: String, Sendable {
 
     /// Called when a message is received during streaming
     case onMessage
+
+    /// Called before a file upload starts
+    case beforeFileUpload
+
+    /// Called after a file upload completes
+    case afterFileUpload
 }
 
 // MARK: - Hook Contexts
@@ -101,6 +107,39 @@ public struct MessageContext: Sendable {
     }
 }
 
+/// File upload metadata
+public struct FileUploadInfo: Sendable {
+    public let filePath: String
+    public let mediaType: String
+    public let fileSize: Int64
+
+    public init(filePath: String, mediaType: String, fileSize: Int64) {
+        self.filePath = filePath
+        self.mediaType = mediaType
+        self.fileSize = fileSize
+    }
+}
+
+/// Context passed to beforeFileUpload hooks
+public struct BeforeFileUploadContext: Sendable {
+    public let fileInfo: FileUploadInfo
+
+    public init(fileInfo: FileUploadInfo) {
+        self.fileInfo = fileInfo
+    }
+}
+
+/// Context passed to afterFileUpload hooks
+public struct AfterFileUploadContext: Sendable {
+    public let fileInfo: FileUploadInfo
+    public let result: Result<String, Error>
+
+    public init(fileInfo: FileUploadInfo, result: Result<String, Error>) {
+        self.fileInfo = fileInfo
+        self.result = result
+    }
+}
+
 // MARK: - Hook Handlers
 
 /// Type-erased hook handler
@@ -130,4 +169,11 @@ public enum HookResult: Sendable {
 
     /// Cancel the operation with an optional reason
     case cancel(reason: String?)
+}
+
+// MARK: - Hook Firing Protocol
+
+/// Protocol for objects that can fire hooks
+protocol HookFiring: AnyObject, Sendable {
+    func fireHooks<T: Sendable>(_ type: HookType, context: T) async
 }

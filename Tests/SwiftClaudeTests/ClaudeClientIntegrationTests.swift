@@ -1,4 +1,5 @@
 import XCTest
+import System
 @testable import SwiftClaude
 
 final class ClaudeClientIntegrationTests: XCTestCase {
@@ -23,6 +24,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 
@@ -48,6 +50,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 
@@ -81,6 +84,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         let options = ClaudeAgentOptions(
             systemPrompt: "Always respond with exactly the word 'ACKNOWLEDGE' and nothing else",
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 
@@ -103,6 +107,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         let options = ClaudeAgentOptions(
             maxTurns: 2,
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 
@@ -130,6 +135,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 
@@ -171,6 +177,7 @@ final class ClaudeClientIntegrationTests: XCTestCase {
 
         let options = ClaudeAgentOptions(
             apiKey: apiKey,
+            workingDirectory: FilePath("/tmp"),
             model: "claude-3-5-sonnet-20241022"
         )
 

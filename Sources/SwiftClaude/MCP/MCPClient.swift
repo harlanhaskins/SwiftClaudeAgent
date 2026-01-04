@@ -1,8 +1,11 @@
 #if os(macOS) || os(Linux)
 import Foundation
+import os.log
 
 /// Client for communicating with MCP servers via stdio
 public actor LocalMCPClient: MCPClientProtocol {
+    private static let logger = Logger(subsystem: "com.anthropic.SwiftClaude", category: "LocalMCPClient")
+
     private let config: MCPServerConfig
     private var process: Process?
     private var stdinPipe: Pipe?
@@ -249,7 +252,7 @@ public actor LocalMCPClient: MCPClientProtocol {
             }
         } catch {
             // Failed to decode - might be a notification or malformed
-            print("Failed to decode MCP message: \(error)")
+            Self.logger.error("Failed to decode MCP message: \(error, privacy: .public)")
         }
     }
 
