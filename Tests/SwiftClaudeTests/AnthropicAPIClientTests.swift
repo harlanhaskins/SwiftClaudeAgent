@@ -1,7 +1,9 @@
-import XCTest
+import Testing
+import Foundation
 @testable import SwiftClaude
 
-final class AnthropicAPIClientTests: XCTestCase {
+@Suite("Anthropic API Client Tests")
+struct AnthropicAPIClientTests {
 
     // Note: These tests require a valid API key
     // Set ANTHROPIC_API_KEY environment variable to run them
@@ -14,19 +16,21 @@ final class AnthropicAPIClientTests: XCTestCase {
         !apiKey.isEmpty
     }
 
-    func testMessageConversion() async throws {
+    @Test("Message conversion")
+    func messageConversion() async throws {
         let converter = MessageConverter()
 
         // Test converting user message
         let userMsg = Message.user(UserMessage(content: "Hello"))
         let (anthropicMessages, systemPrompt) = await converter.convertToAnthropicMessages([userMsg])
 
-        XCTAssertEqual(anthropicMessages.count, 1)
-        XCTAssertEqual(anthropicMessages[0].role, "user")
-        XCTAssertNil(systemPrompt)
+        #expect(anthropicMessages.count == 1)
+        #expect(anthropicMessages[0].role == "user")
+        #expect(systemPrompt == nil)
     }
 
-    func testSystemMessageExtraction() async throws {
+    @Test("System message extraction")
+    func systemMessageExtraction() async throws {
         let converter = MessageConverter()
 
         let systemMsg = Message.system(SystemMessage(content: "You are helpful"))
@@ -34,13 +38,14 @@ final class AnthropicAPIClientTests: XCTestCase {
 
         let (anthropicMessages, systemPrompt) = await converter.convertToAnthropicMessages([systemMsg, userMsg])
 
-        XCTAssertEqual(anthropicMessages.count, 1)
-        XCTAssertEqual(systemPrompt, "You are helpful")
+        #expect(anthropicMessages.count == 1)
+        #expect(systemPrompt == "You are helpful")
     }
 
-    func testSimpleAPICall() async throws {
+    @Test("Simple API call", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func simpleAPICall() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let client = AnthropicAPIClient(apiKey: apiKey)
@@ -57,7 +62,7 @@ final class AnthropicAPIClientTests: XCTestCase {
 
         // Verify we got an assistant message
         if case .assistant(let msg) = response {
-            XCTAssertFalse(msg.content.isEmpty)
+            #expect(!msg.content.isEmpty)
 
             // Check for text content
             let hasText = msg.content.contains { block in
@@ -66,15 +71,16 @@ final class AnthropicAPIClientTests: XCTestCase {
                 }
                 return false
             }
-            XCTAssertTrue(hasText)
+            #expect(hasText)
         } else {
-            XCTFail("Expected assistant message")
+            Issue.record("Expected assistant message")
         }
     }
 
-    func testStreamingAPICall() async throws {
+    @Test("Streaming API call", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func streamingAPICall() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let client = AnthropicAPIClient(apiKey: apiKey)
@@ -94,18 +100,19 @@ final class AnthropicAPIClientTests: XCTestCase {
 
             // Verify we got an assistant message
             if case .assistant(let msg) = message {
-                XCTAssertFalse(msg.content.isEmpty)
+                #expect(!msg.content.isEmpty)
             } else {
-                XCTFail("Expected assistant message")
+                Issue.record("Expected assistant message")
             }
         }
 
-        XCTAssertGreaterThan(messageCount, 0, "Should have received at least one message")
+        #expect(messageCount > 0, "Should have received at least one message")
     }
 
-    func testStreamCancellation() async throws {
+    @Test("Stream cancellation", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func streamCancellation() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let client = AnthropicAPIClient(apiKey: apiKey)
@@ -136,7 +143,8 @@ final class AnthropicAPIClientTests: XCTestCase {
         _ = await task.result
     }
 
-    func testErrorHandling() async throws {
+    @Test("Error handling")
+    func errorHandling() async throws {
         // Test with invalid API key
         let client = AnthropicAPIClient(apiKey: "invalid-key")
 
@@ -149,10 +157,10 @@ final class AnthropicAPIClientTests: XCTestCase {
                 messages: messages,
                 model: "claude-3-5-sonnet-20241022"
             )
-            XCTFail("Should have thrown an error")
+            Issue.record("Should have thrown an error")
         } catch {
             // Expected to fail
-            XCTAssertTrue(error is ClaudeError)
+            #expect(error is ClaudeError)
         }
     }
 }

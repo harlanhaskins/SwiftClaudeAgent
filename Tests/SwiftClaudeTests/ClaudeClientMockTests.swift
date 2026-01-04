@@ -1,15 +1,18 @@
-import XCTest
+import Testing
 import System
 @testable import SwiftClaude
 
-final class ClaudeClientMockTests: XCTestCase {
+@Suite("Claude Client Mock Tests")
+@MainActor
+struct ClaudeClientMockTests {
 
     // Empty tools for testing
     private var emptyTools: Tools {
         Tools(toolsDict: [:])
     }
 
-    func testSimpleQuery() async throws {
+    @Test("Simple query")
+    func simpleQuery() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Hello from Claude!")
 
@@ -23,14 +26,15 @@ final class ClaudeClientMockTests: XCTestCase {
 
             if case .assistant(let msg) = message,
                case .text(let block) = msg.content[0] {
-                XCTAssertEqual(block.text, "Hello from Claude!")
+                #expect(block.text == "Hello from Claude!")
             }
         }
 
-        XCTAssertTrue(receivedMessage)
+        #expect(receivedMessage)
     }
 
-    func testConversationHistory() async throws {
+    @Test("Conversation history")
+    func conversationHistory() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response 1")
         await mock.addTextResponse("Response 2")
@@ -47,25 +51,26 @@ final class ClaudeClientMockTests: XCTestCase {
         // Check history
         let history = await client.history
 
-        XCTAssertEqual(history.count, 4) // 2 user + 2 assistant messages
+        #expect(history.count == 4) // 2 user + 2 assistant messages
 
         // Verify order
         if case .user(let msg) = history[0],
            case .text(let text) = msg.content {
-            XCTAssertEqual(text, "Query 1")
+            #expect(text == "Query 1")
         } else {
-            XCTFail("Expected user message")
+            Issue.record("Expected user message")
         }
 
         if case .assistant(let msg) = history[1],
            case .text(let block) = msg.content[0] {
-            XCTAssertEqual(block.text, "Response 1")
+            #expect(block.text == "Response 1")
         } else {
-            XCTFail("Expected assistant message")
+            Issue.record("Expected assistant message")
         }
     }
 
-    func testMaxTurns() async throws {
+    @Test("Max turns")
+    func maxTurns() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response 1")
         await mock.addTextResponse("Response 2")
@@ -88,10 +93,11 @@ final class ClaudeClientMockTests: XCTestCase {
             receivedMessage = true
         }
 
-        XCTAssertFalse(receivedMessage, "Should not receive message after max turns")
+        #expect(!receivedMessage, "Should not receive message after max turns")
     }
 
-    func testClearHistory() async throws {
+    @Test("Clear history")
+    func clearHistory() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response")
 
@@ -103,17 +109,18 @@ final class ClaudeClientMockTests: XCTestCase {
 
         // Verify history exists
         var history = await client.history
-        XCTAssertFalse(history.isEmpty)
+        #expect(!history.isEmpty)
 
         // Clear history
         await client.clearHistory()
 
         // Verify history is empty
         history = await client.history
-        XCTAssertTrue(history.isEmpty)
+        #expect(history.isEmpty)
     }
 
-    func testSystemPrompt() async throws {
+    @Test("System prompt")
+    func systemPrompt() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response")
 
@@ -128,7 +135,7 @@ final class ClaudeClientMockTests: XCTestCase {
 
         // Verify system prompt was included in the call
         let calls = await mock.streamCompleteCalls
-        XCTAssertEqual(calls.count, 1)
+        #expect(calls.count == 1)
 
         // Check if messages include system message
         let messages = calls[0].messages
@@ -138,10 +145,11 @@ final class ClaudeClientMockTests: XCTestCase {
             }
             return false
         }
-        XCTAssertTrue(hasSystemMessage)
+        #expect(hasSystemMessage)
     }
 
-    func testMultipleConcurrentQueries() async throws {
+    @Test("Multiple concurrent queries")
+    func multipleConcurrentQueries() async throws {
         let mock = MockAPIClient()
 
         // Add responses for multiple queries
@@ -160,7 +168,7 @@ final class ClaudeClientMockTests: XCTestCase {
                         if case .assistant(let msg) = message,
                            case .text(let block) = msg.content[0] {
                             // Just verify we got a response
-                            XCTAssertFalse(block.text.isEmpty)
+                            #expect(!block.text.isEmpty)
                         }
                     }
                 }
@@ -169,10 +177,11 @@ final class ClaudeClientMockTests: XCTestCase {
 
         // All queries should have completed
         let history = await client.history
-        XCTAssertEqual(history.count, 10) // 5 user + 5 assistant
+        #expect(history.count == 10) // 5 user + 5 assistant
     }
 
-    func testCancellation() async throws {
+    @Test("Cancellation")
+    func cancellation() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response", delay: .seconds(1))
 
@@ -193,7 +202,8 @@ final class ClaudeClientMockTests: XCTestCase {
         _ = await task.result
     }
 
-    func testErrorHandling() async throws {
+    @Test("Error handling")
+    func errorHandling() async throws {
         let mock = MockAPIClient()
         await mock.setErrorMode(shouldThrow: true, error: MockError.simulatedError)
 
@@ -206,10 +216,11 @@ final class ClaudeClientMockTests: XCTestCase {
         }
 
         // Should not receive messages when error occurs
-        XCTAssertFalse(receivedMessage)
+        #expect(!receivedMessage)
     }
 
-    func testStreamingBehavior() async throws {
+    @Test("Streaming behavior")
+    func streamingBehavior() async throws {
         let mock = MockAPIClient()
 
         // Add multiple responses with small delays to simulate streaming
@@ -229,6 +240,6 @@ final class ClaudeClientMockTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(parts, ["Part 1", "Part 2", "Part 3"])
+        #expect(parts == ["Part 1", "Part 2", "Part 3"])
     }
 }

@@ -1,9 +1,12 @@
-import XCTest
+import Testing
+import Foundation
 @testable import SwiftClaude
 
-final class MockAPIClientTests: XCTestCase {
+@Suite("Mock API Client Tests")
+struct MockAPIClientTests {
 
-    func testSimpleResponse() async throws {
+    @Test("Simple response")
+    func simpleResponse() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Hello, world!")
 
@@ -19,18 +22,19 @@ final class MockAPIClientTests: XCTestCase {
         )
 
         if case .assistant(let msg) = response {
-            XCTAssertEqual(msg.content.count, 1)
+            #expect(msg.content.count == 1)
             if case .text(let block) = msg.content[0] {
-                XCTAssertEqual(block.text, "Hello, world!")
+                #expect(block.text == "Hello, world!")
             } else {
-                XCTFail("Expected text block")
+                Issue.record("Expected text block")
             }
         } else {
-            XCTFail("Expected assistant message")
+            Issue.record("Expected assistant message")
         }
     }
 
-    func testMultipleResponses() async throws {
+    @Test("Multiple responses")
+    func multipleResponses() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("First response")
         await mock.addTextResponse("Second response")
@@ -58,20 +62,21 @@ final class MockAPIClientTests: XCTestCase {
         // Verify responses
         if case .assistant(let msg) = response1,
            case .text(let block) = msg.content[0] {
-            XCTAssertEqual(block.text, "First response")
+            #expect(block.text == "First response")
         } else {
-            XCTFail("Expected first response")
+            Issue.record("Expected first response")
         }
 
         if case .assistant(let msg) = response2,
            case .text(let block) = msg.content[0] {
-            XCTAssertEqual(block.text, "Second response")
+            #expect(block.text == "Second response")
         } else {
-            XCTFail("Expected second response")
+            Issue.record("Expected second response")
         }
     }
 
-    func testStreamingResponse() async throws {
+    @Test("Streaming response")
+    func streamingResponse() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Part 1")
         await mock.addTextResponse("Part 2")
@@ -95,10 +100,11 @@ final class MockAPIClientTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(receivedMessages, ["Part 1", "Part 2", "Part 3"])
+        #expect(receivedMessages == ["Part 1", "Part 2", "Part 3"])
     }
 
-    func testDelayedResponse() async throws {
+    @Test("Delayed response")
+    func delayedResponse() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Delayed response", delay: .milliseconds(100))
 
@@ -115,10 +121,11 @@ final class MockAPIClientTests: XCTestCase {
         )
 
         let elapsed = Date().timeIntervalSince(start)
-        XCTAssertGreaterThan(elapsed, 0.09) // Allow some tolerance
+        #expect(elapsed > 0.09) // Allow some tolerance
     }
 
-    func testErrorSimulation() async throws {
+    @Test("Error simulation")
+    func errorSimulation() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Should not see this")
 
@@ -136,13 +143,14 @@ final class MockAPIClientTests: XCTestCase {
                 temperature: nil,
                 tools: nil
             )
-            XCTFail("Should have thrown error")
+            Issue.record("Should have thrown error")
         } catch let error as NSError {
-            XCTAssertEqual(error.code, 42)
+            #expect(error.code == 42)
         }
     }
 
-    func testCallTracking() async throws {
+    @Test("Call tracking")
+    func callTracking() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response 1")
         await mock.addTextResponse("Response 2")
@@ -169,12 +177,13 @@ final class MockAPIClientTests: XCTestCase {
         )
 
         let calls = await mock.sendMessageCalls
-        XCTAssertEqual(calls.count, 2)
-        XCTAssertEqual(calls[0].model, "model-1")
-        XCTAssertEqual(calls[1].model, "model-2")
+        #expect(calls.count == 2)
+        #expect(calls[0].model == "model-1")
+        #expect(calls[1].model == "model-2")
     }
 
-    func testReset() async throws {
+    @Test("Reset")
+    func reset() async throws {
         let mock = MockAPIClient()
         await mock.addTextResponse("Response")
         await mock.setErrorMode(shouldThrow: true)
@@ -187,8 +196,8 @@ final class MockAPIClientTests: XCTestCase {
         let calls = await mock.sendMessageCalls
         let shouldThrow = await mock.shouldThrowError
 
-        XCTAssertTrue(responses.isEmpty)
-        XCTAssertTrue(calls.isEmpty)
-        XCTAssertFalse(shouldThrow)
+        #expect(responses.isEmpty)
+        #expect(calls.isEmpty)
+        #expect(!shouldThrow)
     }
 }

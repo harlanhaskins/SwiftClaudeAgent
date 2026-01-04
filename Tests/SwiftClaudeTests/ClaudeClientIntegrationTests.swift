@@ -1,8 +1,11 @@
-import XCTest
+import Testing
+import Foundation
 import System
 @testable import SwiftClaude
 
-final class ClaudeClientIntegrationTests: XCTestCase {
+@Suite("Claude Client Integration Tests")
+@MainActor
+struct ClaudeClientIntegrationTests {
 
     var apiKey: String {
         ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""
@@ -17,9 +20,10 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         Tools(toolsDict: [:])
     }
 
-    func testSimpleQuery() async throws {
+    @Test("Simple query", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func simpleQuery() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
@@ -36,16 +40,17 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             receivedMessage = true
 
             if case .assistant(let msg) = message {
-                XCTAssertFalse(msg.content.isEmpty)
+                #expect(!msg.content.isEmpty)
             }
         }
 
-        XCTAssertTrue(receivedMessage)
+        #expect(receivedMessage)
     }
 
-    func testMultiTurnConversation() async throws {
+    @Test("Multi-turn conversation", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func multiTurnConversation() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
@@ -73,12 +78,13 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             }
         }
 
-        XCTAssertTrue(foundName, "Client should remember the name from previous turn")
+        #expect(foundName, "Client should remember the name from previous turn")
     }
 
-    func testSystemPrompt() async throws {
+    @Test("System prompt", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func systemPrompt() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
@@ -93,15 +99,16 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         for await message in await client.query("Hello") {
             if case .assistant(let msg) = message {
                 for case .text(let block) in msg.content {
-                    XCTAssertTrue(block.text.contains("ACKNOWLEDGE"))
+                    #expect(block.text.contains("ACKNOWLEDGE"))
                 }
             }
         }
     }
 
-    func testMaxTurns() async throws {
+    @Test("Max turns", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func maxTurns() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
@@ -118,19 +125,18 @@ final class ClaudeClientIntegrationTests: XCTestCase {
         for await _ in await client.query("Query 2") {}
 
         // Third should exceed limit
-        var receivedError = false
-        for await message in await client.query("Query 3") {
+        for await _ in await client.query("Query 3") {
             // If we get here, max turns wasn't enforced
-            receivedError = false
         }
 
         // Note: Current implementation silently stops, not throws
         // This test might need adjustment based on desired behavior
     }
 
-    func testClearHistory() async throws {
+    @Test("Clear history", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func clearHistory() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
@@ -146,14 +152,14 @@ final class ClaudeClientIntegrationTests: XCTestCase {
 
         // Check history exists
         var history = await client.history
-        XCTAssertFalse(history.isEmpty)
+        #expect(!history.isEmpty)
 
         // Clear history
         await client.clearHistory()
 
         // Check history is empty
         history = await client.history
-        XCTAssertTrue(history.isEmpty)
+        #expect(history.isEmpty)
 
         // New query shouldn't remember the name
         var foundName = false
@@ -167,12 +173,13 @@ final class ClaudeClientIntegrationTests: XCTestCase {
             }
         }
 
-        XCTAssertFalse(foundName, "Client should not remember name after clearing history")
+        #expect(!foundName, "Client should not remember name after clearing history")
     }
 
-    func testCancellation() async throws {
+    @Test("Cancellation", .enabled(if: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] != nil))
+    func cancellation() async throws {
         guard hasAPIKey else {
-            throw XCTSkip("API key not set")
+            return
         }
 
         let options = ClaudeAgentOptions(
