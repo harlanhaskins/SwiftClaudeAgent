@@ -227,8 +227,6 @@ Append: in Swift using generics
 Continuing with updated prompt: Write a function to sort data in Swift using generics
 ```
 
-Supported on macOS and Linux. Gracefully disabled on Windows.
-
 ## Error Handling
 
 ```swift
@@ -253,7 +251,7 @@ do {
 ## Requirements
 
 - Swift 6.2+
-- macOS 13+ / iOS 16+ / Linux with Swift 6.2+
+- macOS 13+ / iOS 16+
 - Anthropic API key
 
 ## Testing
