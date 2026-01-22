@@ -84,11 +84,11 @@ actor MessageConverter {
             )
 
         case .thinking(let thinkingBlock):
-            // Anthropic doesn't have explicit thinking blocks in API
-            // Represent as text
             return AnthropicContentBlock(
-                type: "text",
-                text: thinkingBlock.thinking,
+                type: "thinking",
+                text: nil,
+                thinking: thinkingBlock.thinking,
+                signature: thinkingBlock.signature,
                 id: nil,
                 name: nil,
                 input: nil,
@@ -220,6 +220,10 @@ actor MessageConverter {
                     fileId: source.fileId
                 )
             ))
+
+        case "thinking":
+            guard let thinking = block.thinking else { return nil }
+            return .thinking(ThinkingBlock(thinking: thinking, signature: block.signature))
 
         default:
             return nil

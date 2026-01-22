@@ -2,6 +2,18 @@ import Foundation
 
 // MARK: - Anthropic API Request Types
 
+struct ThinkingConfig: Codable {
+    let type: String
+    let budgetTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case budgetTokens = "budget_tokens"
+    }
+
+    static let enabled = ThinkingConfig(type: "enabled", budgetTokens: 10000)
+}
+
 struct AnthropicRequest: Codable {
     let model: String
     let messages: [AnthropicMessage]
@@ -10,6 +22,7 @@ struct AnthropicRequest: Codable {
     let temperature: Double?
     let stream: Bool?
     let tools: [AnthropicTool]?
+    let thinking: ThinkingConfig?
 
     enum CodingKeys: String, CodingKey {
         case model
@@ -19,6 +32,7 @@ struct AnthropicRequest: Codable {
         case temperature
         case stream
         case tools
+        case thinking
     }
 }
 
@@ -60,6 +74,8 @@ enum AnthropicContent: Codable, Sendable {
 struct AnthropicContentBlock: Codable, Sendable {
     let type: String
     let text: String?
+    let thinking: String?
+    let signature: String?
     let id: String?
     let name: String?
     let input: [String: AnyCodable]?
@@ -71,6 +87,8 @@ struct AnthropicContentBlock: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case type
         case text
+        case thinking
+        case signature
         case id
         case name
         case input
@@ -83,6 +101,8 @@ struct AnthropicContentBlock: Codable, Sendable {
     init(
         type: String,
         text: String? = nil,
+        thinking: String? = nil,
+        signature: String? = nil,
         id: String? = nil,
         name: String? = nil,
         input: [String: AnyCodable]? = nil,
@@ -93,6 +113,8 @@ struct AnthropicContentBlock: Codable, Sendable {
     ) {
         self.type = type
         self.text = text
+        self.thinking = thinking
+        self.signature = signature
         self.id = id
         self.name = name
         self.input = input
@@ -106,6 +128,8 @@ struct AnthropicContentBlock: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
         text = try container.decodeIfPresent(String.self, forKey: .text)
+        thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        signature = try container.decodeIfPresent(String.self, forKey: .signature)
         id = try container.decodeIfPresent(String.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name)
         input = try container.decodeIfPresent([String: AnyCodable].self, forKey: .input)
@@ -125,6 +149,8 @@ struct AnthropicContentBlock: Codable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(thinking, forKey: .thinking)
+        try container.encodeIfPresent(signature, forKey: .signature)
         try container.encodeIfPresent(id, forKey: .id)
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(input, forKey: .input)

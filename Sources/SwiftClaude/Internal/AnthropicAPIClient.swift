@@ -17,8 +17,13 @@ actor AnthropicAPIClient {
     private let filesURL = "https://api.anthropic.com/v1/files"
     private let anthropicVersion = "2023-06-01"
     private let filesBetaVersion = "files-api-2025-04-14"
+    private let interleavedThinkingBetaVersion = "interleaved-thinking-2025-05-14"
     private let converter = MessageConverter()
     private let urlSession: URLSession
+
+    /// Cache of uploaded files by local path, persisted across API calls
+    /// to avoid re-uploading the same file multiple times
+    private var uploadedFilesCache: [String: UploadedFile] = [:]
 
     // Protocol to allow firing hooks without circular dependency
     private weak var hookFirer: (any HookFiring)?
@@ -142,7 +147,7 @@ actor AnthropicAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
-        request.setValue(filesBetaVersion, forHTTPHeaderField: "anthropic-beta")
+        request.setValue("\(filesBetaVersion),\(interleavedThinkingBetaVersion)", forHTTPHeaderField: "anthropic-beta")
 
         // Resolve file attachments via Files API
         let resolvedMessages = try await resolveFileAttachments(in: messages)
@@ -161,7 +166,8 @@ actor AnthropicAPIClient {
             system: finalSystemPrompt,
             temperature: temperature,
             stream: stream ? true : nil,
-            tools: tools
+            tools: tools,
+            thinking: .enabled
         )
 
         request.httpBody = try encoder.encode(requestBody)
@@ -194,8 +200,6 @@ actor AnthropicAPIClient {
     }
 
     private func resolveFileAttachments(in messages: [Message]) async throws -> [Message] {
-        var cache: [String: UploadedFile] = [:]
-
         var resolvedMessages: [Message] = []
 
         for message in messages {
@@ -207,7 +211,7 @@ actor AnthropicAPIClient {
                 case .blocks(let blocks):
                     var newBlocks: [ContentBlock] = []
                     for block in blocks {
-                        newBlocks.append(try await resolveBlock(block, cache: &cache))
+                        newBlocks.append(try await resolveBlock(block))
                     }
                     resolvedMessages.append(.user(UserMessage(content: .blocks(newBlocks), role: userMsg.role)))
                 }
@@ -215,7 +219,7 @@ actor AnthropicAPIClient {
             case .assistant(var assistantMsg):
                 var newBlocks: [ContentBlock] = []
                 for block in assistantMsg.content {
-                    newBlocks.append(try await resolveBlock(block, cache: &cache))
+                    newBlocks.append(try await resolveBlock(block))
                 }
                 assistantMsg = AssistantMessage(content: newBlocks, model: assistantMsg.model, role: assistantMsg.role)
                 resolvedMessages.append(.assistant(assistantMsg))
@@ -228,11 +232,11 @@ actor AnthropicAPIClient {
         return resolvedMessages
     }
 
-    private func resolveBlock(_ block: ContentBlock, cache: inout [String: UploadedFile]) async throws -> ContentBlock {
+    private func resolveBlock(_ block: ContentBlock) async throws -> ContentBlock {
         switch block {
         case .image(let imageBlock):
             if let path = imageBlock.source.localPath, imageBlock.source.fileId.isEmpty {
-                let upload = try await uploadFileIfNeeded(path: path, cache: &cache)
+                let upload = try await uploadFileIfNeeded(path: path)
                 let newSource = ImageSource(
                     type: "file",
                     data: nil,
@@ -249,7 +253,7 @@ actor AnthropicAPIClient {
 
         case .document(let documentBlock):
             if let path = documentBlock.source.localPath, documentBlock.source.fileId.isEmpty {
-                let upload = try await uploadFileIfNeeded(path: path, cache: &cache)
+                let upload = try await uploadFileIfNeeded(path: path)
                 let newSource = DocumentSource(
                     type: "file",
                     data: nil,
@@ -269,15 +273,15 @@ actor AnthropicAPIClient {
         }
     }
 
-    private func uploadFileIfNeeded(path: String, cache: inout [String: UploadedFile]) async throws -> UploadedFile {
-        if let cached = cache[path] {
+    private func uploadFileIfNeeded(path: String) async throws -> UploadedFile {
+        if let cached = uploadedFilesCache[path] {
             return cached
         }
 
         let filePath = FilePath(path)
         let mediaType = FileAttachmentUtilities.mimeType(for: filePath) ?? "application/octet-stream"
         let uploaded = try await uploadFile(path: path, mediaType: mediaType)
-        cache[path] = uploaded
+        uploadedFilesCache[path] = uploaded
         return uploaded
     }
 

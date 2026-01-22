@@ -222,9 +222,11 @@ public struct TextBlock: Sendable, Codable {
 
 public struct ThinkingBlock: Sendable, Codable {
     public let thinking: String
+    public let signature: String?
 
-    public init(thinking: String) {
+    public init(thinking: String, signature: String? = nil) {
         self.thinking = thinking
+        self.signature = signature
     }
 }
 

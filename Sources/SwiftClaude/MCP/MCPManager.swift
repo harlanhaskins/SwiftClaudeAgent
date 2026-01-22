@@ -160,6 +160,37 @@ public actor MCPManager {
     }
 }
 
+// MARK: - Server Probing
+
+extension MCPManager {
+    /// Information returned from probing an MCP server
+    public struct ServerProbeResult: Sendable {
+        public let name: String
+        public let version: String
+    }
+
+    /// Probe an HTTP MCP server URL to validate it and get its info.
+    /// This connects, gets the server info, and disconnects.
+    /// - Parameter url: The HTTP URL of the MCP server
+    /// - Returns: Server info if successful
+    /// - Throws: MCPError if connection fails
+    public static func probe(url: String) async throws -> ServerProbeResult {
+        let config = MCPServerConfig(url: url)
+        let client = HTTPMCPClient(config: config)
+
+        try await client.start()
+        defer {
+            Task { await client.stop() }
+        }
+
+        guard let info = await client.info else {
+            throw MCPError.invalidResponse("Server did not return info")
+        }
+
+        return ServerProbeResult(name: info.name, version: info.version)
+    }
+}
+
 // MARK: - Default Configuration Path
 
 extension MCPManager {
