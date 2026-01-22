@@ -8,21 +8,24 @@ public struct MCPServerConfig: Codable, Sendable {
     public let args: [String]?
     public let env: [String: String]?
     public let url: String?
+    public let description: String?
 
     /// Initialize with command for stdio-based servers
-    public init(command: String, args: [String]? = nil, env: [String: String]? = nil) {
+    public init(command: String, args: [String]? = nil, env: [String: String]? = nil, description: String? = nil) {
         self.command = command
         self.args = args
         self.env = env
         self.url = nil
+        self.description = description
     }
 
     /// Initialize with URL for HTTP-based servers
-    public init(url: String) {
+    public init(url: String, description: String? = nil) {
         self.command = nil
         self.args = nil
         self.env = nil
         self.url = url
+        self.description = description
     }
 
     /// Check if this is an HTTP-based server
@@ -288,9 +291,9 @@ public enum Content: Codable, Sendable {
 
 /// Text content
 public struct TextContent: Codable, Sendable {
-    public let type: String = "text"
-    public let text: String
-    
+    public var type: String = "text"
+    public var text: String
+
     public init(text: String) {
         self.text = text
     }
@@ -298,10 +301,10 @@ public struct TextContent: Codable, Sendable {
 
 /// Image content
 public struct ImageContent: Codable, Sendable {
-    public let type: String = "image"
-    public let data: String
-    public let mimeType: String
-    
+    public var type: String = "image"
+    public var data: String
+    public var mimeType: String
+
     public init(data: String, mimeType: String) {
         self.data = data
         self.mimeType = mimeType
@@ -310,9 +313,9 @@ public struct ImageContent: Codable, Sendable {
 
 /// Resource content
 public struct ResourceContent: Codable, Sendable {
-    public let type: String = "resource"
-    public let resource: MCPResourceReference
-    
+    public var type: String = "resource"
+    public var resource: MCPResourceReference
+
     public init(resource: MCPResourceReference) {
         self.resource = resource
     }
@@ -340,7 +343,8 @@ public enum MCPError: Error, Sendable, LocalizedError {
     case toolExecutionFailed(String)
     case serverError(String)
     case serverNotRunning
-    
+    case serverNotFound(String)
+
     public var errorDescription: String? {
         switch self {
         case .initializationFailed(let msg):
@@ -365,6 +369,8 @@ public enum MCPError: Error, Sendable, LocalizedError {
             return "Server error: \(msg)"
         case .serverNotRunning:
             return "MCP server not running"
+        case .serverNotFound(let name):
+            return "MCP server not found: \(name)"
         }
     }
 }

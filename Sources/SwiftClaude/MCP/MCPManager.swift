@@ -25,12 +25,17 @@ public struct MCPConfiguration: Codable, Sendable {
     }
 }
 
-/// Manages multiple MCP server connections
+/// Manages multiple MCP server connections with lazy connection support.
+///
+/// Servers are not connected until explicitly requested via `connectServer(name:)`.
+/// This allows the agent to discover available servers and connect on-demand.
 public actor MCPManager {
     private static let logger = Logger(subsystem: "com.anthropic.SwiftClaude", category: "MCPManager")
 
     private var clients: [String: any MCPClientProtocol] = [:]
-    public private(set) var isStarted: Bool = false
+
+    /// Names of servers that have been connected (for session persistence)
+    public private(set) var connectedServerNames: Set<String> = []
 
     private let configuration: MCPConfiguration
 
@@ -40,53 +45,85 @@ public actor MCPManager {
 
     // MARK: - Lifecycle
 
-    /// Start all configured MCP servers
-    public func start() async {
-        guard !isStarted else { return }
-
-        for (serverName, serverConfig) in configuration.mcpServers {
-            // Create appropriate client based on configuration
-            let client: any MCPClientProtocol
-            if serverConfig.isHTTP {
-                client = HTTPMCPClient(config: serverConfig)
-            } else {
-                #if os(macOS) || os(Linux)
-                client = LocalMCPClient(config: serverConfig)
-                #else
-                Self.logger.error("stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead for server \(serverName)")
-                continue
-                #endif
-            }
-
-            do {
-                try await client.start()
-                clients[serverName] = client
-            } catch {
-                Self.logger.error("Failed to start MCP server \(serverName): \(error, privacy: .public)")
-                // Continue with other servers even if one fails
-            }
-        }
-
-        isStarted = true
-    }
-
-    /// Stop all MCP servers
+    /// Stop all MCP servers and disconnect
     public func stop() async {
         for (_, client) in clients {
             await client.stop()
         }
         clients.removeAll()
-        isStarted = false
+        connectedServerNames.removeAll()
     }
 
-    // MARK: - Tool Discovery
+    // MARK: - Server Discovery
 
-    /// Get all tools from all connected MCP servers
-    public func tools() async throws -> [any Tool] {
-        guard isStarted else {
-            throw MCPError.serverNotRunning
+    /// Get metadata for all configured servers (no connection required).
+    /// - Returns: Array of tuples containing server name and description
+    public func serverMetadata() -> [(name: String, description: String)] {
+        configuration.mcpServers.map { (name: $0.key, description: $0.value.description ?? "") }
+    }
+
+    /// Check if a server with the given name is configured.
+    /// - Parameter name: Server name to check
+    /// - Returns: true if the server is configured
+    public func hasServer(named name: String) -> Bool {
+        configuration.mcpServers[name] != nil
+    }
+
+    // MARK: - Lazy Connection
+
+    /// Connect to a specific server and return its tool definitions.
+    /// If already connected, returns the cached client's tools.
+    /// - Parameter name: Name of the server to connect to
+    /// - Returns: Array of tool definitions from the server
+    /// - Throws: `MCPError.serverNotFound` if server is not configured
+    public func connectServer(name: String) async throws -> [MCPToolDefinition] {
+        guard let serverConfig = configuration.mcpServers[name] else {
+            throw MCPError.serverNotFound(name)
         }
 
+        // Return cached client's tools if already connected
+        if let client = clients[name] {
+            return try await client.listTools()
+        }
+
+        // Create appropriate client based on configuration
+        let client: any MCPClientProtocol
+        if serverConfig.isHTTP {
+            client = HTTPMCPClient(config: serverConfig)
+        } else {
+            #if os(macOS) || os(Linux)
+            client = LocalMCPClient(config: serverConfig)
+            #else
+            throw MCPError.invalidConfiguration("stdio/SSE MCP servers are not supported on iOS. Use HTTP transport instead.")
+            #endif
+        }
+
+        try await client.start()
+        clients[name] = client
+        connectedServerNames.insert(name)
+
+        Self.logger.info("Connected to MCP server: \(name)")
+
+        return try await client.listTools()
+    }
+
+    /// Get tools for a connected server, connecting if necessary.
+    /// - Parameter name: Name of the server
+    /// - Returns: Array of Tool instances
+    /// - Throws: `MCPError.serverNotFound` if server is not configured
+    public func toolsForServer(name: String) async throws -> [any Tool] {
+        let definitions = try await connectServer(name: name)
+        guard let client = clients[name] else {
+            throw MCPError.serverNotFound(name)
+        }
+        return definitions.map { MCPTool(definition: $0, client: client, serverName: name) }
+    }
+
+    // MARK: - Legacy API (for backward compatibility)
+
+    /// Get all tools from all connected MCP servers.
+    /// Note: This only returns tools from servers that have already been connected.
+    public func tools() async throws -> [any Tool] {
         var allTools: [any Tool] = []
 
         for (serverName, client) in clients {
@@ -114,6 +151,13 @@ public actor MCPManager {
         }
         return info
     }
+
+    /// Check if a server is currently connected.
+    /// - Parameter name: Server name to check
+    /// - Returns: true if the server is connected
+    public func isServerConnected(_ name: String) -> Bool {
+        clients[name] != nil
+    }
 }
 
 // MARK: - Default Configuration Path
@@ -121,11 +165,12 @@ public actor MCPManager {
 extension MCPManager {
     /// Load manager from default configuration file
     public static func loadDefault(directory: URL) throws -> MCPManager? {
-        guard FileManager.default.fileExists(atPath: directory.path) else {
+        let configFile = directory.appending(path: "mcp-servers.json")
+        guard FileManager.default.fileExists(atPath: configFile.path) else {
             return nil
         }
 
-        let config = try MCPConfiguration.load(from: directory)
+        let config = try MCPConfiguration.load(from: configFile)
         return MCPManager(configuration: config)
     }
 

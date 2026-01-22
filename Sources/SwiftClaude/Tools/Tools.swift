@@ -1,4 +1,6 @@
 import Foundation
+import Synchronization
+import os
 
 // MARK: - Tool Registry Builder
 
@@ -30,10 +32,10 @@ public struct ToolsBuilder {
 
 // MARK: - Tools
 
-/// Immutable, thread-safe registry for tools.
+/// Thread-safe registry for tools that supports dynamic registration.
 ///
 /// Tools maintains all available tools in the system, both built-in and custom.
-/// It's immutable after initialization, making it simple and safe to use from any thread.
+/// It's thread-safe using `OSAllocatedUnfairLock` for synchronization.
 ///
 /// # Example
 /// ```swift
@@ -49,12 +51,20 @@ public struct ToolsBuilder {
 ///     toolUseId: "toolu_123",
 ///     inputData: jsonData
 /// )
+///
+/// // Dynamically register additional tools
+/// tools.register(MyCustomTool())
 /// ```
 public final class Tools: Sendable {
     // MARK: - Properties
 
-    private let tools: [String: any Tool]
+    private let _tools: Mutex<[String: any Tool]>
     private let decoder = JSONDecoder()
+
+    /// Access the tools dictionary (thread-safe)
+    private var tools: [String: any Tool] {
+        _tools.withLock { $0 }
+    }
 
     // MARK: - Initialization
 
@@ -87,13 +97,33 @@ public final class Tools: Sendable {
         for tool in tools {
             toolsDict[tool.instanceName] = tool
         }
-        self.tools = toolsDict
+        self._tools = Mutex(toolsDict)
     }
 
     /// Initialize with a dictionary of tools
     /// - Parameter toolsDict: Dictionary mapping tool names to tool instances
     init(toolsDict: [String: any Tool]) {
-        self.tools = toolsDict
+        self._tools = Mutex(toolsDict)
+    }
+
+    // MARK: - Dynamic Registration
+
+    /// Register a single tool into the registry.
+    /// If a tool with the same name already exists, it will be replaced.
+    /// - Parameter tool: The tool to register
+    public func register(_ tool: any Tool) {
+        _tools.withLock { $0[tool.instanceName] = tool }
+    }
+
+    /// Register multiple tools into the registry.
+    /// If tools with the same names already exist, they will be replaced.
+    /// - Parameter newTools: The tools to register
+    public func register(contentsOf newTools: [any Tool]) {
+        _tools.withLock { tools in
+            for tool in newTools {
+                tools[tool.instanceName] = tool
+            }
+        }
     }
 
     // MARK: - Querying
@@ -131,8 +161,10 @@ public final class Tools: Sendable {
     /// - Parameter types: Tool types to exclude
     /// - Returns: A new Tools instance without the excluded tool types
     public func excluding(_ types: [any Tool.Type]) -> Tools {
-        let filtered = tools.filter { (_, tool) in
-            !types.contains { type(of: tool) == $0 }
+        let filtered = _tools.withLock { tools in
+            tools.filter { (_, tool) in
+                !types.contains { type(of: tool) == $0 }
+            }
         }
         return Tools(toolsDict: filtered)
     }

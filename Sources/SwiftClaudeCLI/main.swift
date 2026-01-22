@@ -441,7 +441,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
                     print("\n\n\(ANSIColor.yellow.rawValue)⏸️  Query interrupted! Enter additional text to append (or press Enter to cancel):\(ANSIColor.reset.rawValue)")
                     print("\(ANSIColor.gray.rawValue)Current prompt: \(currentPrompt)\(ANSIColor.reset.rawValue)")
                     print("\(ANSIColor.green.rawValue)Append:\(ANSIColor.reset.rawValue) ", terminator: "")
-                    FileHandle.standardOutput.synchronizeFile()
+                    try? FileHandle.standardOutput.synchronize()
 
                     if let additionalText = readLine(), !additionalText.trimmingCharacters(in: .whitespaces).isEmpty {
                         currentPrompt = currentPrompt + " " + additionalText
@@ -537,7 +537,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
 
     func streamResponse(client: ClaudeClient, userMessage: UserMessage, toolOutputManager: ToolOutputManager) async {
         print("\n", terminator: "")
-        FileHandle.standardOutput.synchronizeFile()
+        try? FileHandle.standardOutput.synchronize()
 
         var hasOutput = false
 
@@ -550,7 +550,7 @@ struct SwiftClaudeCLI: AsyncParsableCommand {
         }
 
         print("", terminator: "")
-        FileHandle.standardOutput.synchronizeFile()
+        try? FileHandle.standardOutput.synchronize()
     }
 
     func displayMessage(_ message: Message, hasOutput: inout Bool, toolOutputManager: ToolOutputManager) async {

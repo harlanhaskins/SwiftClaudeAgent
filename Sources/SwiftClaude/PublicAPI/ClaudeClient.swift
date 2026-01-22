@@ -64,30 +64,17 @@ public actor ClaudeClient: HookFiring {
         self.apiClient = apiClient
         self.mcpManager = mcpManager
 
-        // Enforce MCP manager is already started if provided
+        // Add MCP discovery tools if MCPManager provided
         if let mcpManager = mcpManager {
-            let isStarted = await mcpManager.isStarted
-            precondition(isStarted, "MCPManager must be started before passing to ClaudeClient. Call mcpManager.start() first.")
-        }
+            let listServers = ListMCPServersTool(mcpManager: mcpManager)
+            let listTools = ListServerToolsTool(mcpManager: mcpManager, toolRegistry: tools)
 
-        // Combine provided tools with MCP tools if available
-        var combinedTools = tools
-        if let mcpManager = mcpManager {
-            let mcpTools = try await mcpManager.tools()
-            if !mcpTools.isEmpty {
-                var allTools: [any Tool] = []
-                for toolName in tools.toolNames {
-                    if let tool = tools.tool(named: toolName) {
-                        allTools.append(tool)
-                    }
-                }
-                allTools.append(contentsOf: mcpTools)
-                combinedTools = Tools(toolsDict: Dictionary(uniqueKeysWithValues: allTools.map { ($0.instanceName, $0) }))
-            }
+            tools.register(listServers)
+            tools.register(listTools)
         }
 
         // Configure SubAgentTools to inherit parent tools (excluding themselves)
-        self.tools = Self.configureSubAgentTools(combinedTools)
+        self.tools = Self.configureSubAgentTools(tools)
 
         // Set up hook firing for the API client if it's an AnthropicAPIClient
         if let anthropicClient = apiClient as? AnthropicAPIClient {
@@ -171,44 +158,96 @@ public actor ClaudeClient: HookFiring {
 
     // MARK: - Session Serialization
 
-    /// Export the current session (conversation history) as JSON data.
-    /// - Returns: JSON-encoded session data
-    /// - Throws: EncodingError if serialization fails
-    public func exportSession() throws -> Data {
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(conversationHistory)
+    /// Internal structure for session persistence
+    private struct SessionData: Codable {
+        let messages: [Message]
+        let connectedMCPServers: [String]
+
+        init(messages: [Message], connectedMCPServers: [String]) {
+            self.messages = messages
+            self.connectedMCPServers = connectedMCPServers
+        }
+
+        /// Support decoding both old format (just messages array) and new format
+        init(from decoder: Decoder) throws {
+            if let container = try? decoder.container(keyedBy: CodingKeys.self) {
+                // New format: object with messages and connectedMCPServers
+                messages = try container.decode([Message].self, forKey: .messages)
+                connectedMCPServers = try container.decodeIfPresent([String].self, forKey: .connectedMCPServers) ?? []
+            } else {
+                // Old format: just an array of messages
+                let container = try decoder.singleValueContainer()
+                messages = try container.decode([Message].self)
+                connectedMCPServers = []
+            }
+        }
     }
 
-    /// Export the current session (conversation history) as a JSON string.
+    /// Export the current session (conversation history and connected MCP servers) as JSON data.
+    /// - Returns: JSON-encoded session data
+    /// - Throws: EncodingError if serialization fails
+    public func exportSession() async throws -> Data {
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        // Get connected server names from MCPManager
+        let connectedServers: [String]
+        if let mcpManager = mcpManager {
+            connectedServers = Array(await mcpManager.connectedServerNames)
+        } else {
+            connectedServers = []
+        }
+
+        let sessionData = SessionData(
+            messages: conversationHistory,
+            connectedMCPServers: connectedServers
+        )
+
+        return try encoder.encode(sessionData)
+    }
+
+    /// Export the current session (conversation history and connected MCP servers) as a JSON string.
     /// - Returns: JSON-encoded session string
     /// - Throws: EncodingError if serialization fails
-    public func exportSessionString() throws -> String {
-        let data = try exportSession()
+    public func exportSessionString() async throws -> String {
+        let data = try await exportSession()
         return String(decoding: data, as: UTF8.self)
     }
 
     /// Import a session (conversation history) from JSON data.
-    /// This replaces the current conversation history.
+    /// This replaces the current conversation history and reconnects to previously connected MCP servers.
     /// - Parameter data: JSON-encoded session data
     /// - Throws: DecodingError if deserialization fails
-    public func importSession(from data: Data) throws {
-        let messages = try decoder.decode([Message].self, from: data)
-        conversationHistory = messages
-        turnCount = messages.filter { message in
+    public func importSession(from data: Data) async throws {
+        let sessionData = try decoder.decode(SessionData.self, from: data)
+        conversationHistory = sessionData.messages
+        turnCount = sessionData.messages.filter { message in
             if case .user = message {
                 return true
             }
             return false
         }.count
+
+        // Reconnect to MCP servers that were connected in the saved session
+        if let mcpManager = mcpManager, !sessionData.connectedMCPServers.isEmpty {
+            for serverName in sessionData.connectedMCPServers {
+                do {
+                    let serverTools = try await mcpManager.toolsForServer(name: serverName)
+                    tools.register(contentsOf: serverTools)
+                } catch {
+                    // Log but continue - server may no longer be available
+                    Self.logger.warning("Failed to reconnect to MCP server '\(serverName)': \(error, privacy: .public)")
+                }
+            }
+        }
     }
 
     /// Import a session (conversation history) from a JSON string.
-    /// This replaces the current conversation history.
+    /// This replaces the current conversation history and reconnects to previously connected MCP servers.
     /// - Parameter string: JSON-encoded session string
     /// - Throws: DecodingError if deserialization fails
-    public func importSession(from string: String) throws {
+    public func importSession(from string: String) async throws {
         let data = Data(string.utf8)
-        try importSession(from: data)
+        try await importSession(from: data)
     }
 
     // MARK: - Tool Formatting
